@@ -116,8 +116,8 @@ export class WeaponSystem {
 
         w.graphics.clear();
 
-        // Быстрое и заметное вращение вокруг игрока
-        const speed = w.speed + (w.level - 1) * 0.015;
+        // Скорость вращения растёт с каждым уровнем (+35% за уровень)
+        const speed = w.speed * (1 + (w.level - 1) * 0.35);
         const baseAngle = time * speed * 0.0022;
         const pulse = 1.0 + Math.sin(time * 0.012) * 0.18;
         const radius = w.radius + (w.level - 1) * 12;
@@ -151,7 +151,7 @@ export class WeaponSystem {
             orb.x = targetX;
             orb.y = targetY;
             orb.setScale(pulse);
-            orb.rotation = angle + time * 0.009; // быстрое собственное вращение духа
+            orb.rotation = angle + time * (0.009 + (w.level - 1) * 0.004); // ускоряется с уровнем
 
             // Длинный светящийся шлейф по орбите
             if (Math.random() < 0.55) {
