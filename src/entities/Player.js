@@ -60,15 +60,20 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         if (this.cursors.up.isDown || this.wasd.up.isDown) moveY -= 1;
         if (this.cursors.down.isDown || this.wasd.down.isDown) moveY += 1;
 
-        // Pointer / Touch Controls
+        // Pointer / Touch Controls (оптимизировано под landscape mobile)
         const pointer = this.scene.input.activePointer;
-        if (pointer.isDown && pointer.getDuration() > 100) {
+        if (pointer.isDown && pointer.getDuration() > 40) {
             const angle = Phaser.Math.Angle.Between(this.x, this.y, pointer.worldX, pointer.worldY);
             const dist = Phaser.Math.Distance.Between(this.x, this.y, pointer.worldX, pointer.worldY);
-            if (dist > 20) {
+            if (dist > 16) {
                 moveX = Math.cos(angle);
                 moveY = Math.sin(angle);
             }
+        }
+
+        // Второй палец = рывок (удобно в landscape)
+        if (this.scene.input.pointer2 && this.scene.input.pointer2.isDown && this.canDash && (moveX !== 0 || moveY !== 0)) {
+            this.dash(moveX, moveY);
         }
 
         // Normalize vector
@@ -84,7 +89,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             this.rotation = Math.atan2(moveY, moveX) + Math.PI / 2;
         }
 
-        // Dash trigger
+        // Dash trigger (клавиатура)
         if (Phaser.Input.Keyboard.JustDown(this.wasd.space) && this.canDash && (moveX !== 0 || moveY !== 0)) {
             this.dash(moveX, moveY);
         }

@@ -13,7 +13,14 @@ export const config = {
     backgroundColor: '#0b0c10',
     scale: {
         mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        // Лучшая поддержка мобильных landscape-экранов
+        expandParent: true,
+        fullscreenTarget: 'game-container'
+    },
+    // Отключаем правый клик / контекстное меню на мобильных
+    input: {
+        activePointers: 3
     },
     physics: {
         default: 'arcade',

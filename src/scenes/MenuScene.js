@@ -70,8 +70,8 @@ export default class MenuScene extends Phaser.Scene {
         });
 
         // Instructions Text
-        this.add.text(width / 2, height - 60, 'WASD / Стрелки — Бег | Пробел — Волк-Рывок | P — Пауза', {
-            fontSize: '16px',
+        this.add.text(width / 2, height - 60, 'WASD / Тап — Бег  |  Пробел / 2-й палец — Рывок  |  P — Пауза', {
+            fontSize: '15px',
             fill: '#88bb99'
         }).setOrigin(0.5);
     }
