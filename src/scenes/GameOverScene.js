@@ -12,11 +12,15 @@ export default class GameOverScene extends Phaser.Scene {
     create() {
         const width = this.scale.width;
         const height = this.scale.height;
+        const isPortrait = height > width;
 
         this.add.rectangle(width / 2, height / 2, width, height, 0x0b0c10);
 
-        this.add.text(width / 2, 120, 'ИГРА ОКОНЧЕНА', {
-            fontSize: '56px',
+        const titleY = isPortrait ? height * 0.18 : 120;
+        const titleSize = isPortrait ? '36px' : '56px';
+
+        this.add.text(width / 2, titleY, 'ИГРА ОКОНЧЕНА', {
+            fontSize: titleSize,
             fill: '#ff0055',
             fontStyle: 'bold',
             shadow: { blur: 20, color: '#ff0055', fill: true }
@@ -31,20 +35,22 @@ export default class GameOverScene extends Phaser.Scene {
             `Итоговый уровень: ${this.finalStats.level}`
         ].join('\n\n');
 
-        this.add.text(width / 2, height / 2 - 20, statsText, {
-            fontSize: '22px',
+        this.add.text(width / 2, height / 2 - (isPortrait ? 10 : 20), statsText, {
+            fontSize: isPortrait ? '18px' : '22px',
             fill: '#ffffff',
             align: 'center',
-            lineSpacing: 10
+            lineSpacing: isPortrait ? 8 : 10
         }).setOrigin(0.5);
 
         // Restart Button
-        const btnBg = this.add.rectangle(width / 2, height - 120, 260, 50, 0x00ffcc, 0.2);
+        const btnY = isPortrait ? height - 90 : height - 120;
+        const btnW = isPortrait ? Math.min(240, width * 0.7) : 260;
+        const btnBg = this.add.rectangle(width / 2, btnY, btnW, 50, 0x00ffcc, 0.2);
         btnBg.setStrokeStyle(2, 0x00ffcc);
         btnBg.setInteractive({ useHandCursor: true });
 
-        const btnText = this.add.text(width / 2, height - 120, 'ИГРАТЬ СНОВА', {
-            fontSize: '22px',
+        const btnText = this.add.text(width / 2, btnY, 'ИГРАТЬ СНОВА', {
+            fontSize: isPortrait ? '18px' : '22px',
             fill: '#ffffff',
             fontStyle: 'bold'
         }).setOrigin(0.5);

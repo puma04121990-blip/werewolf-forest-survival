@@ -84,11 +84,11 @@ export class Hud {
         const secs = (timeInSeconds % 60).toString().padStart(2, '0');
         this.timerText.setText(`${mins}:${secs}`);
 
-        // Boss Bar
+        // Boss Bar (адаптивная ширина для portrait)
         if (boss && boss.active) {
             this.bossContainer.setVisible(true);
             this.bossBar.clear();
-            const bWidth = 400;
+            const bWidth = Math.min(400, this.scene.scale.width * 0.7);
             const bHeight = 14;
 
             this.bossBar.fillStyle(0x222222, 0.9);
