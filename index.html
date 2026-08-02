@@ -33,12 +33,17 @@
             height: 100%;
             position: relative;
             background: #0b140d;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
+        /* Важно: НЕ ставим width/height 100% !important —
+           это ломает Phaser.Scale.FIT и растягивает картинку
+           в портретной ориентации. Phaser сам управляет размером canvas. */
         canvas {
             display: block;
-            width: 100% !important;
-            height: 100% !important;
+            margin: 0 auto;
         }
     </style>
 </head>
