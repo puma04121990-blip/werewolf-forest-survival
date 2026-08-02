@@ -111,19 +111,25 @@ export class WeaponSystem {
         }
 
         if (!w.graphics) {
-            w.graphics = this.scene.add.graphics();
+            w.graphics = this.scene.add.graphics().setDepth(5);
         }
 
         w.graphics.clear();
 
-        const speed = w.speed + (w.level - 1) * 0.005;
-        const baseAngle = time * speed * 0.001;
-        const pulse = 1.0 + Math.sin(time * 0.008) * 0.15;
-        const radius = w.radius + (w.level - 1) * 10;
+        // Более плавное и заметное вращение
+        const speed = w.speed + (w.level - 1) * 0.006;
+        const baseAngle = time * speed * 0.0012;
+        const pulse = 1.0 + Math.sin(time * 0.01) * 0.18;
+        const radius = w.radius + (w.level - 1) * 12;
         const dmg = (w.damage + (w.level - 1) * 8) * this.player.damageMultiplier;
 
-        if (w.level >= 5) {
-            w.graphics.lineStyle(2, 0x00ffff, 0.6);
+        // Мягкое вращающееся кольцо-орбита
+        w.graphics.lineStyle(1.5, 0x00ffcc, 0.25 + Math.sin(time * 0.005) * 0.1);
+        w.graphics.strokeCircle(this.player.x, this.player.y, radius);
+
+        // Соединяющие линии между духами (с 3 уровня)
+        if (w.level >= 3) {
+            w.graphics.lineStyle(1.5, 0x88ffff, 0.35);
             for (let i = 0; i < orbCount; i++) {
                 const nextIdx = (i + 1) % orbCount;
                 const a1 = baseAngle + (i * Math.PI * 2) / orbCount;
@@ -141,28 +147,43 @@ export class WeaponSystem {
             const targetX = this.player.x + Math.cos(angle) * radius;
             const targetY = this.player.y + Math.sin(angle) * radius;
 
+            // Плавное следование + собственное вращение духа
             orb.x = targetX;
             orb.y = targetY;
             orb.setScale(pulse);
+            orb.rotation = angle + time * 0.004; // собственное вращение духа
 
-            if (Math.random() < 0.4) {
-                const trail = this.scene.add.circle(targetX, targetY, 6, 0x00ffff, 0.6);
+            // Длинный светящийся шлейф по орбите
+            if (Math.random() < 0.55) {
+                const trail = this.scene.add.circle(targetX, targetY, 5 + Math.random() * 4, 0x00ffcc, 0.55);
+                trail.setDepth(4);
                 this.scene.tweens.add({
                     targets: trail,
                     alpha: 0,
-                    scale: 0.1,
-                    duration: 200,
+                    scale: 0.15,
+                    duration: 280 + Math.random() * 120,
                     onComplete: () => trail.destroy()
                 });
             }
 
-            w.graphics.lineStyle(2, 0x00ffff, 0.8);
-            w.graphics.fillStyle(0x00ffcc, 0.9);
-            w.graphics.fillCircle(targetX, targetY, 10 * pulse);
-            w.graphics.strokeCircle(targetX, targetY, 14 * pulse);
+            // Основной дух (яркое ядро + свечение)
+            const coreSize = 9 * pulse;
+            w.graphics.fillStyle(0xffffff, 0.95);
+            w.graphics.fillCircle(targetX, targetY, coreSize * 0.45);
 
+            w.graphics.fillStyle(0x00ffcc, 0.85);
+            w.graphics.fillCircle(targetX, targetY, coreSize);
+
+            w.graphics.lineStyle(2.5, 0x88ffff, 0.9);
+            w.graphics.strokeCircle(targetX, targetY, coreSize + 4);
+
+            // Внешнее мягкое свечение
+            w.graphics.lineStyle(1, 0x00ffff, 0.35);
+            w.graphics.strokeCircle(targetX, targetY, coreSize + 9);
+
+            // Урон
             enemies.getChildren().forEach(enemy => {
-                if (enemy.active && Phaser.Math.Distance.Between(targetX, targetY, enemy.x, enemy.y) < 28) {
+                if (enemy.active && Phaser.Math.Distance.Between(targetX, targetY, enemy.x, enemy.y) < 30) {
                     enemy.takeDamage(dmg * 0.05);
                 }
             });
@@ -175,8 +196,10 @@ export class WeaponSystem {
         w.orbs = [];
 
         for (let i = 0; i < count; i++) {
-            const orb = this.scene.add.circle(this.player.x, this.player.y, 8, 0x00ffff);
+            // Используем невидимый спрайт-якорь + рисуем всё через graphics
+            const orb = this.scene.add.circle(this.player.x, this.player.y, 8, 0x00ffff, 0);
             orb.setVisible(false);
+            orb.setDepth(6);
             this.scene.physics.add.existing(orb);
             w.orbs.push(orb);
         }
