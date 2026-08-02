@@ -11,7 +11,7 @@ export class WeaponSystem {
         this.weapons = {
             blaster: { level: 1, maxLevel: 5, lastFired: 0, cooldown: 250, damage: 22, count: 1 },
             spread: { level: 0, maxLevel: 5, lastFired: 0, cooldown: 650, damage: 16, count: 3 },
-            orbital: { level: 0, maxLevel: 5, orbs: [], graphics: null, speed: 0.04, radius: 110, damage: 25 },
+            orbital: { level: 0, maxLevel: 5, orbs: [], graphics: null, speed: 0.12, radius: 110, damage: 25 },
             shield: { level: 0, maxLevel: 5, auraGraphics: null, radius: 90, damage: 15, lastTick: 0 },
             lightning: { level: 0, maxLevel: 5, lastFired: 0, cooldown: 1000, damage: 45, bounces: 3 },
             rockets: { level: 0, maxLevel: 5, lastFired: 0, cooldown: 1400, damage: 40, count: 1 },
@@ -116,10 +116,10 @@ export class WeaponSystem {
 
         w.graphics.clear();
 
-        // Более плавное и заметное вращение
-        const speed = w.speed + (w.level - 1) * 0.006;
-        const baseAngle = time * speed * 0.0012;
-        const pulse = 1.0 + Math.sin(time * 0.01) * 0.18;
+        // Быстрое и заметное вращение вокруг игрока
+        const speed = w.speed + (w.level - 1) * 0.015;
+        const baseAngle = time * speed * 0.0022;
+        const pulse = 1.0 + Math.sin(time * 0.012) * 0.18;
         const radius = w.radius + (w.level - 1) * 12;
         const dmg = (w.damage + (w.level - 1) * 8) * this.player.damageMultiplier;
 
@@ -151,7 +151,7 @@ export class WeaponSystem {
             orb.x = targetX;
             orb.y = targetY;
             orb.setScale(pulse);
-            orb.rotation = angle + time * 0.004; // собственное вращение духа
+            orb.rotation = angle + time * 0.009; // быстрое собственное вращение духа
 
             // Длинный светящийся шлейф по орбите
             if (Math.random() < 0.55) {
