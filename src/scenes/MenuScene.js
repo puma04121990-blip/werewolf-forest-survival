@@ -1,4 +1,5 @@
 import { soundManager } from '../systems/SoundManager.js';
+import { isPortraitMode } from '../utils/orientation.js';
 
 export default class MenuScene extends Phaser.Scene {
     constructor() {
@@ -8,7 +9,7 @@ export default class MenuScene extends Phaser.Scene {
     create() {
         const width = this.scale.width;
         const height = this.scale.height;
-        const isPortrait = height > width;
+        const isPortrait = isPortraitMode();
 
         // Background Forest Grid Lines
         const grid = this.add.graphics();
@@ -16,11 +17,11 @@ export default class MenuScene extends Phaser.Scene {
         for (let x = 0; x < width; x += 40) grid.lineBetween(x, 0, x, height);
         for (let y = 0; y < height; y += 40) grid.lineBetween(0, y, width, y);
 
-        // Adaptive title sizes & positions
-        const titleY = isPortrait ? height * 0.28 : height / 3 - 20;
-        const subtitleY = isPortrait ? height * 0.36 : height / 3 + 40;
-        const titleSize = isPortrait ? '42px' : '56px';
-        const subtitleSize = isPortrait ? '22px' : '32px';
+        // Adaptive title
+        const titleY = isPortrait ? height * 0.26 : height / 3 - 20;
+        const subtitleY = isPortrait ? height * 0.34 : height / 3 + 40;
+        const titleSize = isPortrait ? '48px' : '56px';
+        const subtitleSize = isPortrait ? '24px' : '32px';
 
         this.add.text(width / 2, titleY, 'ОБОРОТЕНЬ', {
             fontSize: titleSize,
@@ -38,8 +39,8 @@ export default class MenuScene extends Phaser.Scene {
 
         // Mute Button
         const initialIcon = soundManager.isMuted ? '🔇' : '🔊';
-        const muteBtn = this.add.text(width - 50, 30, initialIcon, {
-            fontSize: '32px'
+        const muteBtn = this.add.text(width - 50, 28, initialIcon, {
+            fontSize: '30px'
         }).setInteractive({ useHandCursor: true });
 
         muteBtn.on('pointerdown', () => {
@@ -49,9 +50,9 @@ export default class MenuScene extends Phaser.Scene {
         });
 
         // Start Button
-        const btnY = isPortrait ? height * 0.55 : height / 2 + 60;
-        const btnW = isPortrait ? Math.min(260, width * 0.7) : 280;
-        const btnBg = this.add.rectangle(width / 2, btnY, btnW, 60, 0x00ff88, 0.2);
+        const btnY = isPortrait ? height * 0.52 : height / 2 + 60;
+        const btnW = isPortrait ? Math.min(280, width * 0.65) : 280;
+        const btnBg = this.add.rectangle(width / 2, btnY, btnW, 58, 0x00ff88, 0.2);
         btnBg.setStrokeStyle(3, 0x00ff88);
         btnBg.setInteractive({ useHandCursor: true });
 
@@ -75,14 +76,14 @@ export default class MenuScene extends Phaser.Scene {
             this.scene.start('GameScene');
         });
 
-        // Instructions — компактнее в portrait
-        const hintY = isPortrait ? height - 40 : height - 60;
+        // Controls hint
+        const hintY = isPortrait ? height - 50 : height - 60;
         const hintText = isPortrait
-            ? 'Тап — Бег  |  2-й палец — Рывок'
+            ? 'Тап — Бег   ·   2-й палец — Рывок'
             : 'WASD / Тап — Бег  |  Пробел / 2-й палец — Рывок  |  P — Пауза';
 
         this.add.text(width / 2, hintY, hintText, {
-            fontSize: isPortrait ? '13px' : '15px',
+            fontSize: isPortrait ? '14px' : '15px',
             fill: '#88bb99',
             align: 'center'
         }).setOrigin(0.5);
