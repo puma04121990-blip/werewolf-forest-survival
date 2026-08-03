@@ -1,6 +1,7 @@
-import { BALANCE } from '../config.js';
-
-const STORAGE_KEY = BALANCE.metaStorageKey || 'werewolf_forest_meta_v1';
+// Do NOT import BALANCE at module top-level — config.js imports MenuScene → MetaProgress
+// which creates a circular dependency (TDZ: "Cannot access BALANCE before initialization").
+const STORAGE_KEY = 'werewolf_forest_meta_v1';
+const BASE_LEVELUP_REROLLS = 2;
 
 /** Catalog of permanent unlocks */
 export const META_UNLOCKS = {
@@ -198,7 +199,7 @@ export class MetaProgress {
     }
 
     static getLevelUpRerolls() {
-        return (BALANCE.levelUpRerolls || 2) + this.getExtraRerolls();
+        return BASE_LEVELUP_REROLLS + this.getExtraRerolls();
     }
 
     static getSelectedWeapon() {
