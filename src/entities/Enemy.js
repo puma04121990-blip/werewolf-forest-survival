@@ -12,6 +12,24 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.initTypeStats(type, difficultyLevel);
         this.lastShootTime = 0;
         this.phase = 1;
+
+        // Attack wind-up (telegraph)
+        this.isWindingUp = false;
+        this.windUpElapsed = 0;
+        this.windUpDuration = 0;
+        this.pendingAttack = null;
+        this.windUpAngle = 0;
+
+        // Overhead HP for tank / elite
+        this.hpBar = null;
+        this.warningGfx = null;
+        if (type === 'tank' || type === 'elite') {
+            this.hpBar = scene.add.graphics().setDepth(25);
+            this.warningGfx = scene.add.graphics().setDepth(24);
+            this.showHpBar = true;
+        } else {
+            this.showHpBar = false;
+        }
     }
 
     initTypeStats(type, difficulty = 1) {
@@ -34,6 +52,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
                 this.damage = 14 * dmgMul;
                 this.xpValue = 42 + Math.floor(d * 4);
                 this.setScale(1.4);
+                this.slamCooldown = 3400;
+                this.slamWindUp = 620;
                 break;
             case 'shooter':
                 this.maxHealth = 32 * hpMul;
@@ -48,9 +68,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
                 this.damage = 12 * dmgMul;
                 this.xpValue = 70 + Math.floor(d * 6);
                 this.setScale(1.25);
+                this.volleyCooldown = 2800;
+                this.volleyWindUp = 520;
                 break;
             case 'boss':
-                // Boss scales hard with wave index (difficulty)
                 this.maxHealth = (550 + d * 180) * (1 + d * 0.08);
                 this.speed = 48 + Math.min(25, d * 2);
                 this.damage = 18 + d * 2.5;
@@ -88,6 +109,13 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         const player = this.scene.player;
         if (!this.active || !player || !player.active) return;
 
+        // Wind-up: slow/stop, draw telegraph, then fire
+        if (this.isWindingUp) {
+            this.updateWindUp(time, delta, player);
+            this.drawHpBar();
+            return;
+        }
+
         const angle = Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y);
         this.setRotation(angle + Math.PI / 2);
 
@@ -98,29 +126,192 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             } else if (dist > 360) {
                 this.setVelocity(Math.cos(angle) * this.speed, Math.sin(angle) * this.speed);
             } else {
-                // Strafe
                 this.setVelocity(-Math.sin(angle) * this.speed * 0.7, Math.cos(angle) * this.speed * 0.7);
             }
 
             const shootCd = Math.max(1400, 2300 - this.difficultyLevel * 80);
             if (time - this.lastShootTime > shootCd) {
                 this.lastShootTime = time;
-                // Base speed only — wave scaling applied in fireEnemyBullet
                 this.scene.fireEnemyBullet(this.x, this.y, angle, 250, 5 + this.difficultyLevel * 0.4);
             }
         } else if (this.type === 'elite') {
             this.setVelocity(Math.cos(angle) * this.speed, Math.sin(angle) * this.speed);
-            if (time - this.lastShootTime > 2800) {
-                this.lastShootTime = time;
-                for (let i = -1; i <= 1; i++) {
-                    this.scene.fireEnemyBullet(this.x, this.y, angle + i * 0.2, 270, 7);
-                }
+            if (time - this.lastShootTime > (this.volleyCooldown || 2800)) {
+                this.startWindUp('eliteVolley', this.volleyWindUp || 520, angle);
+            }
+        } else if (this.type === 'tank') {
+            this.setVelocity(Math.cos(angle) * this.speed, Math.sin(angle) * this.speed);
+            if (time - this.lastShootTime > (this.slamCooldown || 3400)) {
+                this.startWindUp('tankSlam', this.slamWindUp || 620, angle);
             }
         } else if (this.type === 'boss') {
             this.updateBoss(time, player, angle);
         } else {
             this.setVelocity(Math.cos(angle) * this.speed, Math.sin(angle) * this.speed);
         }
+
+        this.drawHpBar();
+        this.clearWarning();
+    }
+
+    startWindUp(attackType, duration, angle) {
+        this.isWindingUp = true;
+        this.windUpElapsed = 0;
+        this.windUpDuration = duration;
+        this.pendingAttack = attackType;
+        this.windUpAngle = angle;
+        this.setVelocity(0, 0);
+        // Brief red flash at start of telegraph
+        this.setTint(0xff4444);
+    }
+
+    updateWindUp(time, delta, player) {
+        this.windUpElapsed += delta;
+        // Track player slightly during wind-up (partial aim)
+        const aim = Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y);
+        this.windUpAngle = Phaser.Math.Angle.RotateTo(this.windUpAngle, aim, 0.04);
+        this.setRotation(this.windUpAngle + Math.PI / 2);
+        this.setVelocity(0, 0);
+
+        const t = Phaser.Math.Clamp(this.windUpElapsed / this.windUpDuration, 0, 1);
+        // Pulse tint as attack approaches
+        if (Math.floor(this.windUpElapsed / 80) % 2 === 0) {
+            this.setTint(0xff2200);
+        } else {
+            this.setTint(this.getTintForType(this.type));
+        }
+
+        this.drawAttackWarning(t);
+
+        if (this.windUpElapsed >= this.windUpDuration) {
+            this.finishWindUp(player);
+        }
+    }
+
+    drawAttackWarning(t) {
+        if (!this.warningGfx) return;
+        this.warningGfx.clear();
+        this.warningGfx.setPosition(0, 0);
+
+        const alpha = 0.25 + t * 0.55;
+        const angle = this.windUpAngle;
+
+        if (this.pendingAttack === 'eliteVolley') {
+            // Three aim cones / lines toward player
+            const spreads = [-0.2, 0, 0.2];
+            const len = 90 + t * 70;
+            spreads.forEach(spread => {
+                const a = angle + spread;
+                const x2 = this.x + Math.cos(a) * len;
+                const y2 = this.y + Math.sin(a) * len;
+                this.warningGfx.lineStyle(2 + t * 2, 0xff2244, alpha);
+                this.warningGfx.lineBetween(this.x, this.y, x2, y2);
+                // tip marker
+                this.warningGfx.fillStyle(0xff4466, alpha);
+                this.warningGfx.fillCircle(x2, y2, 3 + t * 2);
+            });
+            // Outer danger arc
+            this.warningGfx.lineStyle(1.5, 0xff6688, alpha * 0.7);
+            this.warningGfx.beginPath();
+            this.warningGfx.arc(this.x, this.y, 40 + t * 20, angle - 0.35, angle + 0.35, false);
+            this.warningGfx.strokePath();
+        } else if (this.pendingAttack === 'tankSlam') {
+            // Expanding slam ring + charge arrow
+            const radius = 28 + t * 48;
+            this.warningGfx.lineStyle(3, 0xff3300, alpha);
+            this.warningGfx.strokeCircle(this.x, this.y, radius);
+            this.warningGfx.fillStyle(0xff2200, 0.08 + t * 0.12);
+            this.warningGfx.fillCircle(this.x, this.y, radius);
+
+            // Direction of slam
+            const len = 50 + t * 55;
+            const x2 = this.x + Math.cos(angle) * len;
+            const y2 = this.y + Math.sin(angle) * len;
+            this.warningGfx.lineStyle(4, 0xffaa44, alpha);
+            this.warningGfx.lineBetween(this.x, this.y, x2, y2);
+            // Arrow head
+            const left = angle + 2.5;
+            const right = angle - 2.5;
+            this.warningGfx.fillStyle(0xffaa44, alpha);
+            this.warningGfx.fillTriangle(
+                x2, y2,
+                x2 + Math.cos(left) * 12, y2 + Math.sin(left) * 12,
+                x2 + Math.cos(right) * 12, y2 + Math.sin(right) * 12
+            );
+        }
+    }
+
+    finishWindUp(player) {
+        const attack = this.pendingAttack;
+        const angle = this.windUpAngle;
+        this.isWindingUp = false;
+        this.pendingAttack = null;
+        this.windUpElapsed = 0;
+        this.lastShootTime = this.scene.time.now;
+        this.setTint(this.getTintForType(this.type));
+        this.clearWarning();
+
+        if (!this.active) return;
+
+        if (attack === 'eliteVolley') {
+            for (let i = -1; i <= 1; i++) {
+                this.scene.fireEnemyBullet(this.x, this.y, angle + i * 0.2, 270, 7);
+            }
+        } else if (attack === 'tankSlam') {
+            this.executeTankSlam(angle, player);
+        }
+    }
+
+    executeTankSlam(angle, player) {
+        // Short lunge
+        const lunge = 280;
+        this.setVelocity(Math.cos(angle) * lunge, Math.sin(angle) * lunge);
+        this.scene.cameras.main.shake(80, 0.006);
+
+        // Impact ring VFX
+        const ring = this.scene.add.circle(this.x, this.y, 20, 0xff4400, 0.45).setDepth(15);
+        this.scene.tweens.add({
+            targets: ring,
+            radius: 70,
+            alpha: 0,
+            duration: 280,
+            onComplete: () => ring.destroy()
+        });
+
+        // Damage if player in slam radius after brief delay (at impact)
+        this.scene.time.delayedCall(120, () => {
+            if (!this.active || !player || !player.active) return;
+            this.setVelocity(Math.cos(angle) * this.speed, Math.sin(angle) * this.speed);
+            const dist = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
+            if (dist < 72) {
+                player.takeDamage(this.damage * 1.35);
+            }
+        });
+    }
+
+    clearWarning() {
+        if (this.warningGfx) this.warningGfx.clear();
+    }
+
+    drawHpBar() {
+        if (!this.showHpBar || !this.hpBar || !this.active) return;
+
+        const barW = this.type === 'tank' ? 44 : 38;
+        const barH = 5;
+        const yOff = this.type === 'tank' ? -36 : -32;
+        const x = this.x - barW / 2;
+        const y = this.y + yOff;
+
+        const pct = Phaser.Math.Clamp(this.health / this.maxHealth, 0, 1);
+        const fillColor = pct > 0.5 ? 0x44cc66 : pct > 0.25 ? 0xddaa22 : 0xff3344;
+
+        this.hpBar.clear();
+        this.hpBar.fillStyle(0x111111, 0.8);
+        this.hpBar.fillRoundedRect(x - 1, y - 1, barW + 2, barH + 2, 2);
+        this.hpBar.fillStyle(fillColor, 1);
+        this.hpBar.fillRoundedRect(x, y, barW * pct, barH, 2);
+        this.hpBar.lineStyle(1, 0xffffff, 0.35);
+        this.hpBar.strokeRoundedRect(x - 1, y - 1, barW + 2, barH + 2, 2);
     }
 
     updateBoss(time, player, angle) {
@@ -151,7 +342,6 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
 
     bossRingAttack(bulletCount = 10, angleOffset = 0) {
-        // Phase still bumps base speed a bit; wave mul stacks on top
         const base = 210 + this.phase * 18;
         for (let i = 0; i < bulletCount; i++) {
             const a = (i * Math.PI * 2) / bulletCount + angleOffset;
@@ -173,20 +363,21 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         const dealt = Math.min(this.health, amount);
         this.health -= amount;
 
-        // Continuous aura/orbital ticks: rare floating numbers to avoid spam
         const showNum = opts.forceNumber || isCrit || amount >= 8 || Math.random() < 0.12;
         if (showNum && !opts.silent) {
             this.scene.showDamageNumber(this.x, this.y - 10, amount, isCrit);
         }
 
-        if (!opts.silent) {
+        if (!opts.silent && !this.isWindingUp) {
             this.setTint(0xffffff);
             this.scene.time.delayedCall(70, () => {
-                if (this.active) {
+                if (this.active && !this.isWindingUp) {
                     this.setTint(this.getTintForType(this.type));
                 }
             });
         }
+
+        this.drawHpBar();
 
         if (this.health <= 0) {
             this.die();
@@ -194,10 +385,21 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         return dealt;
     }
 
+    destroyFx() {
+        if (this.hpBar) {
+            this.hpBar.destroy();
+            this.hpBar = null;
+        }
+        if (this.warningGfx) {
+            this.warningGfx.destroy();
+            this.warningGfx = null;
+        }
+    }
+
     die() {
+        this.destroyFx();
         soundManager.playExplosion();
 
-        // Death particles
         for (let i = 0; i < (this.isBoss ? 14 : 6); i++) {
             const c = this.scene.add.circle(this.x, this.y, 3 + Math.random() * 4, this.getTintForType(this.type), 0.9);
             const a = Math.random() * Math.PI * 2;
@@ -214,7 +416,6 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         }
 
         const xp = this.xpValue;
-        // Burst split: green / cyan / gold piles feel better than one orb
         if (this.scene.spawnXpBurst) {
             this.scene.spawnXpBurst(this.x, this.y, xp);
         } else {
@@ -234,5 +435,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
         this.scene.events.emit('enemyKilled', this);
         this.destroy();
+    }
+
+    destroy(fromScene) {
+        this.destroyFx();
+        super.destroy(fromScene);
     }
 }
