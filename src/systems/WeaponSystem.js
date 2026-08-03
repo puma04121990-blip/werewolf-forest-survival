@@ -62,13 +62,13 @@ export class WeaponSystem {
                 const dmg = w.damage + (w.level - 1) * 6;
 
                 if (w.level >= 3) {
-                    this.scene.firePlayerBullet(this.player.x - 8, this.player.y, baseAngle, 650, dmg);
-                    this.scene.firePlayerBullet(this.player.x + 8, this.player.y, baseAngle, 650, dmg);
+                    this.scene.firePlayerBullet(this.player.x - 8, this.player.y, baseAngle, 650, dmg, 'blaster');
+                    this.scene.firePlayerBullet(this.player.x + 8, this.player.y, baseAngle, 650, dmg, 'blaster');
                     if (w.level >= 5) {
-                        this.scene.firePlayerBullet(this.player.x, this.player.y, baseAngle + 0.1, 700, dmg * 1.2);
+                        this.scene.firePlayerBullet(this.player.x, this.player.y, baseAngle + 0.1, 700, dmg * 1.2, 'blaster');
                     }
                 } else {
-                    this.scene.firePlayerBullet(this.player.x, this.player.y, baseAngle, 650, dmg);
+                    this.scene.firePlayerBullet(this.player.x, this.player.y, baseAngle, 650, dmg, 'blaster');
                 }
                 soundManager.playLaser();
             }
@@ -95,7 +95,7 @@ export class WeaponSystem {
 
                 for (let i = 0; i < projectileCount; i++) {
                     const angle = w.level >= 5 ? i * spreadAngle : baseAngle + (i - (projectileCount - 1) / 2) * spreadAngle;
-                    this.scene.firePlayerBullet(this.player.x, this.player.y, angle, 550, dmg);
+                    this.scene.firePlayerBullet(this.player.x, this.player.y, angle, 550, dmg, 'spread');
                 }
                 soundManager.playLaser();
             }
@@ -186,7 +186,7 @@ export class WeaponSystem {
             enemies.getChildren().forEach(enemy => {
                 if (enemy.active && Phaser.Math.Distance.Between(targetX, targetY, enemy.x, enemy.y) < 32) {
                     if (this.scene.dealDamageToEnemy) {
-                        this.scene.dealDamageToEnemy(enemy, dmg, { silent: false });
+                        this.scene.dealDamageToEnemy(enemy, dmg, { silent: false, source: 'orbital' });
                     } else {
                         enemy.takeDamage(dmg);
                     }
@@ -233,7 +233,7 @@ export class WeaponSystem {
             enemies.getChildren().forEach(enemy => {
                 if (enemy.active && Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y) < radius) {
                     if (this.scene.dealDamageToEnemy) {
-                        this.scene.dealDamageToEnemy(enemy, dmg);
+                        this.scene.dealDamageToEnemy(enemy, dmg, { source: 'shield' });
                     } else {
                         enemy.takeDamage(dmg);
                     }
@@ -283,7 +283,7 @@ export class WeaponSystem {
 
             hitSet.add(current);
             if (this.scene.dealDamageToEnemy) {
-                this.scene.dealDamageToEnemy(current, damage);
+                this.scene.dealDamageToEnemy(current, damage, { source: 'lightning' });
             } else {
                 current.takeDamage(damage);
             }
@@ -334,6 +334,7 @@ export class WeaponSystem {
                     const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y) + (i - (count - 1) / 2) * 0.3;
                     const rocket = new Rocket(this.scene, this.player.x, this.player.y);
                     if (this.scene.rockets) this.scene.rockets.add(rocket);
+                    rocket.weaponKey = 'rockets';
                     rocket.launch(this.player.x, this.player.y, angle, dmg, splash);
                 }
                 soundManager.playLaser();
@@ -357,6 +358,7 @@ export class WeaponSystem {
                 const offsetY = (Math.random() - 0.5) * 80;
                 const mine = new Mine(this.scene, this.player.x + offsetX, this.player.y + offsetY);
                 if (this.scene.mines) this.scene.mines.add(mine);
+                mine.weaponKey = 'mines';
                 mine.arm(this.player.x + offsetX, this.player.y + offsetY, dmg, 50, splash);
             }
         }

@@ -132,7 +132,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             const shootCd = Math.max(1400, 2300 - this.difficultyLevel * 80);
             if (time - this.lastShootTime > shootCd) {
                 this.lastShootTime = time;
-                this.scene.fireEnemyBullet(this.x, this.y, angle, 250, 5 + this.difficultyLevel * 0.4);
+                this.scene.fireEnemyBullet(this.x, this.y, angle, 250, 5 + this.difficultyLevel * 0.4, this);
             }
         } else if (this.type === 'elite') {
             this.setVelocity(Math.cos(angle) * this.speed, Math.sin(angle) * this.speed);
@@ -255,7 +255,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
         if (attack === 'eliteVolley') {
             for (let i = -1; i <= 1; i++) {
-                this.scene.fireEnemyBullet(this.x, this.y, angle + i * 0.2, 270, 7);
+                this.scene.fireEnemyBullet(this.x, this.y, angle + i * 0.2, 270, 7, this);
             }
         } else if (attack === 'tankSlam') {
             this.executeTankSlam(angle, player);
@@ -284,7 +284,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             this.setVelocity(Math.cos(angle) * this.speed, Math.sin(angle) * this.speed);
             const dist = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
             if (dist < 72) {
-                player.takeDamage(this.damage * 1.35);
+                player.takeDamage(this.damage * 1.35, {
+                    kind: 'slam',
+                    enemyType: 'tank'
+                });
             }
         });
     }
@@ -345,7 +348,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         const base = 210 + this.phase * 18;
         for (let i = 0; i < bulletCount; i++) {
             const a = (i * Math.PI * 2) / bulletCount + angleOffset;
-            this.scene.fireEnemyBullet(this.x, this.y, a, base, 6 + this.phase);
+            this.scene.fireEnemyBullet(this.x, this.y, a, base, 6 + this.phase, this);
         }
     }
 
@@ -353,7 +356,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         const count = 16;
         for (let i = 0; i < count; i++) {
             const a = (i * Math.PI * 2) / count + this.scene.gameTime * 0.002;
-            this.scene.fireEnemyBullet(this.x, this.y, a, 195 + (i % 4) * 22, 7);
+            this.scene.fireEnemyBullet(this.x, this.y, a, 195 + (i % 4) * 22, 7, this);
         }
     }
 

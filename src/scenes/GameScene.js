@@ -10,6 +10,7 @@ import { Hud } from '../systems/Hud.js';
 import { LevelUpPanel } from '../ui/LevelUpPanel.js';
 import { soundManager } from '../systems/SoundManager.js';
 import { BALANCE } from '../config.js';
+import { RunStatsTracker } from '../systems/RunStats.js';
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -27,6 +28,7 @@ export default class GameScene extends Phaser.Scene {
         this.combo = 0;
         this.comboTimer = 0;
         this.maxCombo = 0;
+        this.runStats = new RunStatsTracker();
 
         this.createForestBackground();
 
@@ -140,21 +142,25 @@ export default class GameScene extends Phaser.Scene {
         );
     }
 
-    /** Central damage pipeline: crit + lifesteal */
+    /** Central damage pipeline: crit + lifesteal + damage tracking */
     dealDamageToEnemy(enemy, baseDamage, opts = {}) {
         if (!enemy || !enemy.active || !this.player) return 0;
         const { damage, isCrit } = this.player.rollDamage(baseDamage);
         const dealt = enemy.takeDamage(damage, isCrit, opts);
-        if (dealt > 0) this.player.applyLifesteal(dealt);
+        if (dealt > 0) {
+            this.player.applyLifesteal(dealt);
+            if (opts.source) this.runStats.addDamage(opts.source, dealt);
+        }
         return dealt;
     }
 
-    firePlayerBullet(x, y, angle, speed = 650, damage = 22) {
+    firePlayerBullet(x, y, angle, speed = 650, damage = 22, weaponKey = 'blaster') {
         const bullet = this.playerBullets.get();
         if (bullet) {
             // Store base damage; crit applied on hit
             bullet.fire(x, y, angle, speed, damage, false, 'bullet');
             bullet.baseDamage = damage;
+            bullet.weaponKey = weaponKey;
         }
     }
 
@@ -173,11 +179,16 @@ export default class GameScene extends Phaser.Scene {
         return base * mul;
     }
 
-    fireEnemyBullet(x, y, angle, speed = null, damage = 6) {
+    fireEnemyBullet(x, y, angle, speed = null, damage = 6, sourceEnemy = null) {
         const bullet = this.enemyBullets.get();
         if (bullet) {
             const finalSpeed = this.getEnemyBulletSpeed(speed);
             bullet.fire(x, y, angle, finalSpeed, damage, true, 'enemy_bullet');
+            const enemyType = sourceEnemy
+                ? (typeof sourceEnemy === 'string' ? sourceEnemy : sourceEnemy.type)
+                : 'shooter';
+            bullet.enemyType = enemyType;
+            bullet.hitKind = 'bullet';
         }
     }
 
@@ -372,13 +383,19 @@ export default class GameScene extends Phaser.Scene {
     handleBulletEnemyCollision(bullet, enemy) {
         if (!bullet.active || !enemy.active) return;
         const base = bullet.baseDamage != null ? bullet.baseDamage : bullet.damage;
-        this.dealDamageToEnemy(enemy, base, { forceNumber: true });
+        this.dealDamageToEnemy(enemy, base, {
+            forceNumber: true,
+            source: bullet.weaponKey || 'blaster'
+        });
         bullet.destroy();
     }
 
     handleEnemyBulletPlayerCollision(player, bullet) {
         if (!bullet.active || !player.active) return;
-        player.takeDamage(bullet.damage);
+        player.takeDamage(bullet.damage, {
+            kind: 'bullet',
+            enemyType: bullet.enemyType || 'shooter'
+        });
         bullet.destroy();
     }
 
@@ -386,7 +403,10 @@ export default class GameScene extends Phaser.Scene {
         if (!player.active || !enemy.active) return;
         // During dash: I-frames block damage; body strike is handled in Player.updateDashCombat
         if (player.isDashing || player.isInvulnerable) return;
-        player.takeDamage(enemy.damage);
+        player.takeDamage(enemy.damage, {
+            kind: 'contact',
+            enemyType: enemy.type || 'chaser'
+        });
     }
 
     handlePlayerXpCollision(player, orb) {
@@ -547,14 +567,18 @@ export default class GameScene extends Phaser.Scene {
     }
 
     onPlayerDied() {
+        if (this.runStats) this.runStats.recordDeath();
         this.saveBestRun();
+        const snap = this.runStats ? this.runStats.getSnapshot() : {};
         this.time.delayedCall(900, () => {
             this.scene.start('GameOverScene', {
                 kills: this.kills,
                 time: Math.floor(this.gameTime / 1000),
                 level: this.level,
                 maxCombo: this.maxCombo,
-                wave: this.spawner ? this.spawner.difficultyLevel : 1
+                wave: this.spawner ? this.spawner.difficultyLevel : 1,
+                deathCause: snap.deathCause || null,
+                damageByWeapon: snap.damageByWeapon || {}
             });
         });
     }

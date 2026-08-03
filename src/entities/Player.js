@@ -284,7 +284,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     dealDashDamage(enemy, baseDamage, isBody) {
         if (!enemy || !enemy.active) return;
         if (this.scene.dealDamageToEnemy) {
-            this.scene.dealDamageToEnemy(enemy, baseDamage, { forceNumber: true });
+            this.scene.dealDamageToEnemy(enemy, baseDamage, {
+                forceNumber: true,
+                source: 'dash'
+            });
         } else if (enemy.takeDamage) {
             const { damage, isCrit } = this.rollDamage(baseDamage);
             enemy.takeDamage(damage, isCrit, { forceNumber: true });
@@ -357,8 +360,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         }
     }
 
-    takeDamage(amount) {
+    /**
+     * @param {number} amount
+     * @param {{ kind?: string, enemyType?: string, label?: string } | null} [source]
+     */
+    takeDamage(amount, source = null) {
         if (this.isInvulnerable || !this.active) return false;
+
+        if (source && this.scene.runStats) {
+            this.scene.runStats.recordHit(source);
+        }
 
         const reduced = amount * (1 - Phaser.Math.Clamp(this.armor, 0, 0.45));
         this.health -= reduced;
