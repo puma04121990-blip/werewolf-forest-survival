@@ -135,7 +135,8 @@ export default class GameScene extends Phaser.Scene {
             this.activeBoss,
             this.combo,
             this.spawner.difficultyLevel,
-            this.weaponSystem
+            this.weaponSystem,
+            this.upgradeSystem
         );
     }
 

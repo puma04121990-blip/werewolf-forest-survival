@@ -305,6 +305,28 @@ export class UpgradeSystem {
         if (optionId) this.bannedIds.add(optionId);
     }
 
+    /**
+     * Passive stacks for HUD — stable order by PASSIVE_META keys.
+     * @returns {{ id: string, name: string, icon: string, stacks: number, short: string }[]}
+     */
+    getPassiveStacksForHud() {
+        const list = [];
+        Object.keys(PASSIVE_META).forEach(id => {
+            const stacks = this.passiveStacks.get(id) || 0;
+            if (stacks <= 0) return;
+            const meta = PASSIVE_META[id];
+            list.push({
+                id,
+                name: meta.name,
+                icon: meta.icon,
+                stacks,
+                short: `${meta.icon} ${meta.name} ×${stacks}`,
+                compact: `${meta.icon}×${stacks}`
+            });
+        });
+        return list;
+    }
+
     applyUpgrade(option) {
         if (option.type === 'weapon') {
             this.weaponSystem.upgradeWeapon(option.key);

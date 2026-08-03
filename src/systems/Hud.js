@@ -67,6 +67,18 @@ export class Hud {
             fill: '#cceeee'
         }).setScrollFactor(0).setDepth(100);
 
+        // Passive stacks: «⚔️ Жажда крови ×3»
+        this.passiveStrip = scene.add.text(20, 72, '', {
+            fontSize: '13px',
+            fill: '#ffdd88',
+            fontStyle: 'bold',
+            stroke: '#1a1000',
+            strokeThickness: 3,
+            wordWrap: { width: Math.min(420, scene.scale.width * 0.55) }
+        }).setScrollFactor(0).setDepth(100);
+
+        this._lastPassiveKey = '';
+
         // Mute
         const initialIcon = soundManager.isMuted ? '🔇' : '🔊';
         this.muteBtn = scene.add.text(scene.scale.width - 48, 16, initialIcon, {
@@ -139,7 +151,7 @@ export class Hud {
         });
     }
 
-    update(player, currentXp, xpToNextLevel, level, kills, timeInSeconds, boss, combo, difficulty, weaponSystem) {
+    update(player, currentXp, xpToNextLevel, level, kills, timeInSeconds, boss, combo, difficulty, weaponSystem, upgradeSystem) {
         const w = this.scene.scale.width;
         const h = this.scene.scale.height;
 
@@ -212,6 +224,9 @@ export class Hud {
             this.weaponStrip.setText(parts.join('  '));
         }
 
+        // Passive stack counters
+        this.updatePassiveStrip(upgradeSystem, w);
+
         // Boss
         if (boss && boss.active) {
             this.bossContainer.setVisible(true);
@@ -231,5 +246,49 @@ export class Hud {
         } else {
             this.bossContainer.setVisible(false);
         }
+    }
+
+    /**
+     * Show owned passives with stack counts.
+     * Few stacks → full name «⚔️ Жажда крови ×3»
+     * Many → compact «⚔️×3  🛡️×2» so HUD stays readable
+     */
+    updatePassiveStrip(upgradeSystem, screenW) {
+        if (!this.passiveStrip) return;
+        if (!upgradeSystem || !upgradeSystem.getPassiveStacksForHud) {
+            this.passiveStrip.setText('');
+            return;
+        }
+
+        const stacks = upgradeSystem.getPassiveStacksForHud();
+        if (stacks.length === 0) {
+            this.passiveStrip.setText('');
+            this._lastPassiveKey = '';
+            return;
+        }
+
+        const key = stacks.map(s => `${s.id}:${s.stacks}`).join('|');
+        // Always refresh layout width; skip text rebuild only if same content
+        this.passiveStrip.setWordWrapWidth(Math.min(440, screenW * 0.55));
+
+        if (key === this._lastPassiveKey) return;
+        this._lastPassiveKey = key;
+
+        // Full labels when ≤4 distinct passives; compact when more
+        const useFull = stacks.length <= 4;
+        const text = useFull
+            ? stacks.map(s => s.short).join('   ')
+            : stacks.map(s => s.compact).join('  ');
+
+        this.passiveStrip.setText(text);
+
+        // Subtle pop when stacks change
+        this.passiveStrip.setScale(1.08);
+        this.scene.tweens.add({
+            targets: this.passiveStrip,
+            scale: 1,
+            duration: 120,
+            ease: 'Back.easeOut'
+        });
     }
 }
