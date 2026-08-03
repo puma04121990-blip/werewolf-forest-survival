@@ -1,6 +1,7 @@
 import { soundManager } from './SoundManager.js';
 import { Rocket } from '../entities/Rocket.js';
 import { Mine } from '../entities/Mine.js';
+import { EVOLUTIONS } from './Evolutions.js';
 
 export class WeaponSystem {
     constructor(scene, player) {
@@ -17,6 +18,60 @@ export class WeaponSystem {
             rockets: { level: 0, maxLevel: 5, lastFired: 0, cooldown: 1400, damage: 40, count: 1 },
             mines: { level: 0, maxLevel: 5, lastFired: 0, cooldown: 1800, damage: 55, count: 1 }
         };
+
+        /** @type {Set<string>} */
+        this.evolutions = new Set();
+        /** weaponKey → evolutionId that consumed it */
+        this.consumedBy = {};
+        this._moonChainAcc = 0;
+    }
+
+    hasEvolution(id) {
+        return this.evolutions.has(id);
+    }
+
+    isWeaponConsumed(key) {
+        return !!this.consumedBy[key];
+    }
+
+    getEvolutionOwningWeapon(key) {
+        return this.consumedBy[key] || null;
+    }
+
+    /**
+     * Apply evolution: mark weapons consumed, enable evolved combat.
+     * @param {string} evoId
+     */
+    applyEvolution(evoId) {
+        const evo = EVOLUTIONS[evoId];
+        if (!evo || this.evolutions.has(evoId)) return false;
+
+        this.evolutions.add(evoId);
+        (evo.consumesWeapons || []).forEach(key => {
+            this.consumedBy[key] = evoId;
+            if (this.weapons[key]) {
+                this.weapons[key].level = Math.max(this.weapons[key].level, 5);
+                this.weapons[key].evolved = true;
+            }
+        });
+
+        // Moon storm: lightning fully absorbed into orbital form
+        if (evoId === 'moon_storm' && this.weapons.lightning) {
+            this.weapons.lightning.level = 0;
+            this.weapons.lightning.merged = true;
+        }
+
+        if (this.scene.hud?.showToast) {
+            this.scene.hud.showToast(`✨ ${evo.name}!`, evo.color || '#ffe600');
+        }
+        soundManager.playLevelUp && soundManager.playLevelUp();
+        return true;
+    }
+
+    getEvolutionDisplayName(weaponKey) {
+        const evoId = this.consumedBy[weaponKey];
+        if (!evoId) return null;
+        return EVOLUTIONS[evoId]?.name || null;
     }
 
     update(time, delta, enemies) {
@@ -52,13 +107,18 @@ export class WeaponSystem {
         const w = this.weapons.blaster;
         if (w.level <= 0) return;
 
+        // —— Эволюция: Кровавая буря ——
+        if (this.hasEvolution('blood_storm')) {
+            this.updateBloodStorm(time, enemies);
+            return;
+        }
+
         const effectiveCooldown = (w.cooldown - (w.level - 1) * 30) / this.player.fireRateMultiplier;
         if (time - w.lastFired > effectiveCooldown) {
             const target = this.getClosestEnemy(enemies);
             if (target) {
                 w.lastFired = time;
                 const baseAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y);
-                // Pure base damage — crit/multiplier applied on hit
                 const dmg = w.damage + (w.level - 1) * 6;
 
                 if (w.level >= 3) {
@@ -73,6 +133,42 @@ export class WeaponSystem {
                 soundManager.playLaser();
             }
         }
+    }
+
+    /** 360° claw storm — evolved blaster + bloodlust */
+    updateBloodStorm(time, enemies) {
+        const w = this.weapons.blaster;
+        const cd = 180 / this.player.fireRateMultiplier;
+        if (time - w.lastFired <= cd) return;
+
+        const hasEnemy = enemies.getChildren().some(e => e.active);
+        if (!hasEnemy) return;
+
+        w.lastFired = time;
+        const blades = 10;
+        const dmg = 28; // strong AoE hit
+        const spin = time * 0.004;
+        for (let i = 0; i < blades; i++) {
+            const angle = spin + (i * Math.PI * 2) / blades;
+            this.scene.firePlayerBullet(
+                this.player.x,
+                this.player.y,
+                angle,
+                520,
+                dmg,
+                'blaster'
+            );
+        }
+        // Inner pulse slash VFX
+        const ring = this.scene.add.circle(this.player.x, this.player.y, 16, 0xff2244, 0.35).setDepth(8);
+        this.scene.tweens.add({
+            targets: ring,
+            radius: 70,
+            alpha: 0,
+            duration: 220,
+            onComplete: () => ring.destroy()
+        });
+        soundManager.playLaser();
     }
 
     updateSpread(time, enemies) {
@@ -106,7 +202,8 @@ export class WeaponSystem {
         const w = this.weapons.orbital;
         if (w.level <= 0) return;
 
-        const orbCount = 2 + (w.level - 1) * 2;
+        const moonStorm = this.hasEvolution('moon_storm');
+        const orbCount = moonStorm ? 12 : 2 + (w.level - 1) * 2;
         if (w.orbs.length !== orbCount) {
             this.rebuildOrbitalOrbs(orbCount);
         }
@@ -117,30 +214,40 @@ export class WeaponSystem {
 
         w.graphics.clear();
 
-        // Скорость вращения растёт с каждым уровнем (+35% за уровень)
-        const speed = w.speed * (1 + (w.level - 1) * 0.35);
+        const speed = w.speed * (1 + (w.level - 1) * 0.35) * (moonStorm ? 1.45 : 1);
         const baseAngle = time * speed * 0.0022;
         const pulse = 1.0 + Math.sin(time * 0.012) * 0.18;
-        const radius = w.radius + (w.level - 1) * 12;
-        // Per-frame tick (~60fps): ~0.04 of hit ≈ original feel, scaled by pipeline
-        const dmg = (w.damage + (w.level - 1) * 8) * 0.04;
+        const radius = w.radius + (w.level - 1) * 12 + (moonStorm ? 28 : 0);
+        const dmg = (w.damage + (w.level - 1) * 8) * (moonStorm ? 0.055 : 0.04);
 
-        // Мягкое вращающееся кольцо-орбита
-        w.graphics.lineStyle(1.5, 0x00ffcc, 0.25 + Math.sin(time * 0.005) * 0.1);
+        const ringColor = moonStorm ? 0xaa88ff : 0x00ffcc;
+        w.graphics.lineStyle(1.5, ringColor, 0.25 + Math.sin(time * 0.005) * 0.1);
         w.graphics.strokeCircle(this.player.x, this.player.y, radius);
 
-        // Соединяющие линии между духами (с 3 уровня)
-        if (w.level >= 3) {
-            w.graphics.lineStyle(1.5, 0x88ffff, 0.35);
+        if (w.level >= 3 || moonStorm) {
+            w.graphics.lineStyle(1.5, moonStorm ? 0xddaaff : 0x88ffff, 0.35);
             for (let i = 0; i < orbCount; i++) {
                 const nextIdx = (i + 1) % orbCount;
                 const a1 = baseAngle + (i * Math.PI * 2) / orbCount;
                 const a2 = baseAngle + (nextIdx * Math.PI * 2) / orbCount;
-                const x1 = this.player.x + Math.cos(a1) * radius;
-                const y1 = this.player.y + Math.sin(a1) * radius;
-                const x2 = this.player.x + Math.cos(a2) * radius;
-                const y2 = this.player.y + Math.sin(a2) * radius;
-                w.graphics.lineBetween(x1, y1, x2, y2);
+                w.graphics.lineBetween(
+                    this.player.x + Math.cos(a1) * radius,
+                    this.player.y + Math.sin(a1) * radius,
+                    this.player.x + Math.cos(a2) * radius,
+                    this.player.y + Math.sin(a2) * radius
+                );
+            }
+        }
+
+        // Moon storm: periodic chain lightning from orbs
+        if (moonStorm) {
+            this._moonChainAcc += delta;
+            if (this._moonChainAcc >= 700 / this.player.fireRateMultiplier) {
+                this._moonChainAcc = 0;
+                const target = this.getClosestEnemy(enemies);
+                if (target) {
+                    this.castChainLightning(target, enemies, 6, 38, 'lightning');
+                }
             }
         }
 
@@ -149,15 +256,18 @@ export class WeaponSystem {
             const targetX = this.player.x + Math.cos(angle) * radius;
             const targetY = this.player.y + Math.sin(angle) * radius;
 
-            // Плавное следование + собственное вращение духа
             orb.x = targetX;
             orb.y = targetY;
             orb.setScale(pulse);
-            orb.rotation = angle + time * (0.009 + (w.level - 1) * 0.004); // ускоряется с уровнем
+            orb.rotation = angle + time * (0.009 + (w.level - 1) * 0.004);
 
-            // Длинный светящийся шлейф по орбите
-            if (Math.random() < 0.55) {
-                const trail = this.scene.add.circle(targetX, targetY, 5 + Math.random() * 4, 0x00ffcc, 0.55);
+            if (Math.random() < (moonStorm ? 0.7 : 0.55)) {
+                const trail = this.scene.add.circle(
+                    targetX, targetY,
+                    5 + Math.random() * 4,
+                    moonStorm ? 0xcc88ff : 0x00ffcc,
+                    0.55
+                );
                 trail.setDepth(4);
                 this.scene.tweens.add({
                     targets: trail,
@@ -168,23 +278,19 @@ export class WeaponSystem {
                 });
             }
 
-            // Основной дух (яркое ядро + свечение)
-            const coreSize = 9 * pulse;
+            const coreSize = (moonStorm ? 11 : 9) * pulse;
             w.graphics.fillStyle(0xffffff, 0.95);
             w.graphics.fillCircle(targetX, targetY, coreSize * 0.45);
-
-            w.graphics.fillStyle(0x00ffcc, 0.85);
+            w.graphics.fillStyle(moonStorm ? 0xbb66ff : 0x00ffcc, 0.85);
             w.graphics.fillCircle(targetX, targetY, coreSize);
-
-            w.graphics.lineStyle(2.5, 0x88ffff, 0.9);
+            w.graphics.lineStyle(2.5, moonStorm ? 0xeeccff : 0x88ffff, 0.9);
             w.graphics.strokeCircle(targetX, targetY, coreSize + 4);
-
-            // Внешнее мягкое свечение
-            w.graphics.lineStyle(1, 0x00ffff, 0.35);
+            w.graphics.lineStyle(1, moonStorm ? 0xffaaff : 0x00ffff, 0.35);
             w.graphics.strokeCircle(targetX, targetY, coreSize + 9);
 
+            const hitR = moonStorm ? 38 : 32;
             enemies.getChildren().forEach(enemy => {
-                if (enemy.active && Phaser.Math.Distance.Between(targetX, targetY, enemy.x, enemy.y) < 32) {
+                if (enemy.active && Phaser.Math.Distance.Between(targetX, targetY, enemy.x, enemy.y) < hitR) {
                     if (this.scene.dealDamageToEnemy) {
                         this.scene.dealDamageToEnemy(enemy, dmg, { silent: false, source: 'orbital' });
                     } else {
@@ -250,6 +356,8 @@ export class WeaponSystem {
 
     updateLightning(time, enemies) {
         const w = this.weapons.lightning;
+        // Absorbed into moon storm
+        if (this.hasEvolution('moon_storm') || w.merged) return;
         if (w.level <= 0) return;
 
         const cooldown = (w.cooldown - (w.level - 1) * 100) / this.player.fireRateMultiplier;
@@ -260,36 +368,37 @@ export class WeaponSystem {
                 const bounces = w.bounces + (w.level - 1) * 2;
                 const dmg = w.damage + (w.level - 1) * 12;
 
-                this.castChainLightning(target, enemies, bounces, dmg);
+                this.castChainLightning(target, enemies, bounces, dmg, 'lightning');
                 if (w.level >= 5) {
                     const enemiesList = enemies.getChildren().filter(e => e.active && e !== target);
                     if (enemiesList.length > 0) {
-                        this.castChainLightning(enemiesList[0], enemies, bounces, dmg);
+                        this.castChainLightning(enemiesList[0], enemies, bounces, dmg, 'lightning');
                     }
                 }
             }
         }
     }
 
-    castChainLightning(firstEnemy, enemies, maxBounces, damage) {
+    castChainLightning(firstEnemy, enemies, maxBounces, damage, source = 'lightning') {
         let current = firstEnemy;
         let hitSet = new Set();
 
         let startX = this.player.x;
         let startY = this.player.y;
+        const lineColor = source === 'lightning' && this.hasEvolution('moon_storm') ? 0xddaaff : 0xaaddff;
 
         for (let i = 0; i < maxBounces; i++) {
             if (!current || !current.active) break;
 
             hitSet.add(current);
             if (this.scene.dealDamageToEnemy) {
-                this.scene.dealDamageToEnemy(current, damage, { source: 'lightning' });
+                this.scene.dealDamageToEnemy(current, damage, { source });
             } else {
                 current.takeDamage(damage);
             }
 
             const line = this.scene.add.graphics();
-            line.lineStyle(3, 0xaaddff, 1.0);
+            line.lineStyle(3, lineColor, 1.0);
             line.lineBetween(startX, startY, current.x, current.y);
             this.scene.tweens.add({
                 targets: line,
@@ -365,6 +474,9 @@ export class WeaponSystem {
     }
 
     upgradeWeapon(weaponKey) {
+        if (this.isWeaponConsumed(weaponKey) && this.weapons[weaponKey]?.evolved) {
+            return; // evolved — no further base levels
+        }
         if (this.weapons[weaponKey]) {
             if (this.weapons[weaponKey].level < this.weapons[weaponKey].maxLevel) {
                 this.weapons[weaponKey].level += 1;
@@ -374,5 +486,10 @@ export class WeaponSystem {
 
     getWeaponLevel(weaponKey) {
         return this.weapons[weaponKey] ? this.weapons[weaponKey].level : 0;
+    }
+
+    /** List active evolutions for pause / HUD */
+    getActiveEvolutions() {
+        return [...this.evolutions].map(id => EVOLUTIONS[id]).filter(Boolean);
     }
 }

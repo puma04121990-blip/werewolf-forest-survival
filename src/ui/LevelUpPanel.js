@@ -5,7 +5,8 @@ const RARITY_STYLE = {
     new: { stroke: 0x44ff88, fill: 0x0f2a18, label: '#66ffaa' },
     upgrade: { stroke: 0x44aaff, fill: 0x0f1a2a, label: '#88ccff' },
     weapon: { stroke: 0x00ffcc, fill: 0x1a1a2e, label: '#00ffcc' },
-    passive: { stroke: 0xffcc44, fill: 0x2a220f, label: '#ffdd66' }
+    passive: { stroke: 0xffcc44, fill: 0x2a220f, label: '#ffdd66' },
+    evolution: { stroke: 0xff66aa, fill: 0x2a1020, label: '#ff99cc' }
 };
 
 /**

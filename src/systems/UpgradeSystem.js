@@ -1,4 +1,5 @@
 import { getWeaponUpgradeDpsInfo, getPassiveDpsHint } from './WeaponStats.js';
+import { getReadyEvolutionIds, evolutionToCard, EVOLUTIONS } from './Evolutions.js';
 
 /** Weapon display names for synergy text */
 const WEAPON_META = {
@@ -134,6 +135,18 @@ export class UpgradeSystem {
             dpsInfo = getWeaponUpgradeDpsInfo(opt.key, curLvl, this.player);
         } else if (opt.type === 'passive' && opt.id) {
             dpsInfo = getPassiveDpsHint(opt.id, this.player);
+        } else if (opt.type === 'evolution') {
+            dpsInfo = {
+                dpsLine: opt.dpsLine || 'Эволюция оружия',
+                roleTag: opt.roleTag || '✨ ЭВО',
+                roleColor: opt.roleColor || '#ffe600'
+            };
+        }
+
+        // Evolution progress hint on weapons/passives that feed a recipe
+        let evoHint = null;
+        if (opt.type === 'weapon' || opt.type === 'passive') {
+            evoHint = this.getEvolutionProgressHint(opt);
         }
 
         return {
@@ -141,7 +154,7 @@ export class UpgradeSystem {
             synergies,
             synergyText: primary
                 ? `Синергия: ${primary.partnerIcon} ${primary.partnerName}`
-                : null,
+                : (evoHint || null),
             synergyDetail: primary ? primary.text : null,
             dpsInfo,
             dpsLine: dpsInfo?.dpsLine || null,
@@ -151,9 +164,55 @@ export class UpgradeSystem {
         };
     }
 
+    /** Soft hint: "→ Кровавая буря (когти 5/5)" */
+    getEvolutionProgressHint(opt) {
+        const ready = getReadyEvolutionIds(this.weaponSystem, this);
+        if (ready.length) return null; // card will appear separately
+
+        for (const evo of Object.values(EVOLUTIONS)) {
+            if (this.weaponSystem.hasEvolution(evo.id)) continue;
+            const req = evo.requires || {};
+            let relevant = false;
+            let parts = [];
+
+            if (req.weapons && opt.type === 'weapon' && req.weapons[opt.key] != null) {
+                relevant = true;
+                Object.entries(req.weapons).forEach(([k, min]) => {
+                    const cur = this.weaponSystem.getWeaponLevel(k);
+                    parts.push(`${WEAPON_META[k]?.icon || k}${cur}/${min}`);
+                });
+            }
+            if (req.passives && opt.type === 'passive' && req.passives[opt.id] != null) {
+                relevant = true;
+                Object.entries(req.passives).forEach(([id, min]) => {
+                    const cur = this.passiveStacks.get(id) || 0;
+                    parts.push(`${PASSIVE_META[id]?.icon || id}${cur}/${min}`);
+                });
+                if (req.weapons) {
+                    Object.entries(req.weapons).forEach(([k, min]) => {
+                        const cur = this.weaponSystem.getWeaponLevel(k);
+                        parts.push(`${WEAPON_META[k]?.icon || k}${cur}/${min}`);
+                    });
+                }
+            }
+            if (relevant) {
+                return `→ ${evo.icon} ${evo.name} (${parts.join(' ')})`;
+            }
+        }
+        return null;
+    }
+
     getAvailableOptions(excludeIds = []) {
         const exclude = new Set([...excludeIds, ...this.bannedIds]);
         const pool = [];
+
+        // Ready evolutions (always in pool; getRandomOptions guarantees one slot)
+        getReadyEvolutionIds(this.weaponSystem, this).forEach(evoId => {
+            const card = evolutionToCard(evoId);
+            if (card && !exclude.has(card.id)) {
+                pool.push(this.enrichOption(card));
+            }
+        });
 
         const weaponDefs = [
             { key: 'blaster', name: 'Кровавые когти', icon: '🐾',
@@ -182,6 +241,9 @@ export class UpgradeSystem {
         weaponDefs.forEach(w => {
             const id = 'weapon_' + w.key;
             if (exclude.has(id)) return;
+            // Evolved / consumed weapons no longer appear as base upgrades
+            if (this.weaponSystem.isWeaponConsumed(w.key)) return;
+            if (this.weaponSystem.weapons[w.key]?.merged) return;
             const curLvl = this.weaponSystem.getWeaponLevel(w.key);
             if (curLvl < 5) {
                 const nextLvl = curLvl + 1;
@@ -289,18 +351,26 @@ export class UpgradeSystem {
             if (filtered.length >= count) available = filtered;
         }
 
-        const weaponCount = Object.values(this.weaponSystem.weapons).filter(w => w.level > 0).length;
+        const picked = [];
+        // Guarantee evolution card when ready (classic Survivors moment)
+        const evoCards = available.filter(o => o.type === 'evolution');
+        if (evoCards.length > 0) {
+            picked.push(evoCards[0]);
+            available = available.filter(o => o.id !== evoCards[0].id);
+            count -= 1;
+        }
+
+        const weaponCount = Object.values(this.weaponSystem.weapons).filter(w => w.level > 0 && !w.merged).length;
         const weighted = available.map(opt => {
             let w = 1;
+            if (opt.type === 'evolution') w = 0; // already handled
             if (opt.type === 'weapon' && opt.rarity === 'new' && weaponCount < 3) w = 1.6;
             if (opt.type === 'weapon' && weaponCount >= 5) w = 0.7;
             if (opt.type === 'passive' && weaponCount >= 4) w = 1.3;
-            // Boost cards that have active synergies
             if (opt.synergies && opt.synergies.length > 0) w *= 1.25;
             return { opt, w };
-        });
+        }).filter(x => x.w > 0);
 
-        const picked = [];
         const pool = [...weighted];
         for (let i = 0; i < count && pool.length > 0; i++) {
             const total = pool.reduce((s, x) => s + x.w, 0);
@@ -349,8 +419,29 @@ export class UpgradeSystem {
      */
     getLoadoutSummary() {
         const weapons = [];
+        const shownEvo = new Set();
+
         Object.keys(WEAPON_META).forEach(key => {
             const level = this.weaponSystem.getWeaponLevel(key);
+            if (level <= 0 && !this.weaponSystem.isWeaponConsumed(key)) return;
+            if (this.weaponSystem.weapons[key]?.merged) return;
+
+            const evoId = this.weaponSystem.getEvolutionOwningWeapon(key);
+            if (evoId) {
+                if (shownEvo.has(evoId)) return;
+                shownEvo.add(evoId);
+                const evo = EVOLUTIONS[evoId];
+                weapons.push({
+                    key: evoId,
+                    name: evo.name,
+                    icon: evo.icon,
+                    level: 5,
+                    evolved: true,
+                    line: `${evo.icon} ${evo.name}  ✨`
+                });
+                return;
+            }
+
             if (level <= 0) return;
             const meta = WEAPON_META[key];
             weapons.push({
@@ -361,8 +452,12 @@ export class UpgradeSystem {
                 line: `${meta.icon} ${meta.name}  Ур.${level}`
             });
         });
-        // Sort by level desc, then name
-        weapons.sort((a, b) => b.level - a.level || a.name.localeCompare(b.name, 'ru'));
+
+        weapons.sort((a, b) => {
+            if (a.evolved && !b.evolved) return -1;
+            if (!a.evolved && b.evolved) return 1;
+            return b.level - a.level || a.name.localeCompare(b.name, 'ru');
+        });
 
         const passives = this.getPassiveStacksForHud().map(p => ({
             id: p.id,
@@ -378,12 +473,25 @@ export class UpgradeSystem {
     }
 
     applyUpgrade(option) {
-        if (option.type === 'weapon') {
+        if (option.type === 'evolution' && option.evoId) {
+            this.weaponSystem.applyEvolution(option.evoId);
+        } else if (option.type === 'weapon') {
             this.weaponSystem.upgradeWeapon(option.key);
+            this.maybeToastEvolutionReady();
         } else if (option.type === 'passive' && option.apply) {
             option.apply(this.player);
             const n = this.passiveStacks.get(option.id) || 0;
             this.passiveStacks.set(option.id, n + 1);
+            this.maybeToastEvolutionReady();
+        }
+    }
+
+    maybeToastEvolutionReady() {
+        const ready = getReadyEvolutionIds(this.weaponSystem, this);
+        if (ready.length === 0) return;
+        const evo = EVOLUTIONS[ready[0]];
+        if (evo && this.scene.hud?.showToast) {
+            this.scene.hud.showToast(`✨ Доступна эволюция: ${evo.name}`, evo.color || '#ffe600');
         }
     }
 }

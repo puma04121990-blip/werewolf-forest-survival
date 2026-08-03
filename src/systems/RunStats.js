@@ -1,9 +1,9 @@
 /** Labels for damage breakdown & death cause */
 
 export const WEAPON_DAMAGE_META = {
-    blaster: { icon: '🐾', name: 'Кровавые когти' },
+    blaster: { icon: '🐾', name: 'Кровавые когти / Буря' },
     spread: { icon: '🐺', name: 'Волчий рык' },
-    orbital: { icon: '🌕', name: 'Духи Луны' },
+    orbital: { icon: '🌕', name: 'Духи / Лунная буря' },
     shield: { icon: '🩸', name: 'Аура Хищника' },
     lightning: { icon: '⚡', name: 'Лунный разряд' },
     rockets: { icon: '👻', name: 'Призыв Стаи' },

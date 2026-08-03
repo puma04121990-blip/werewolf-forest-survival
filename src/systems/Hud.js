@@ -232,10 +232,20 @@ export class Hud {
             this.comboText.setAlpha(0);
         }
 
-        // Weapon strip
+        // Weapon strip (+ evolutions as ✨)
         if (weaponSystem) {
             const parts = [];
+            const shownEvo = new Set();
             Object.keys(WEAPON_ICONS).forEach(key => {
+                if (weaponSystem.weapons[key]?.merged) return;
+                const evoId = weaponSystem.getEvolutionOwningWeapon?.(key);
+                if (evoId) {
+                    if (shownEvo.has(evoId)) return;
+                    shownEvo.add(evoId);
+                    const evo = weaponSystem.getActiveEvolutions?.().find(e => e.id === evoId);
+                    parts.push(`${evo?.icon || '✨'}✨`);
+                    return;
+                }
                 const lvl = weaponSystem.getWeaponLevel(key);
                 if (lvl > 0) parts.push(`${WEAPON_ICONS[key]}${lvl}`);
             });
