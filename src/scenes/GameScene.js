@@ -7,7 +7,7 @@ import { Spawner } from '../systems/Spawner.js';
 import { WeaponSystem } from '../systems/WeaponSystem.js';
 import { UpgradeSystem } from '../systems/UpgradeSystem.js';
 import { Hud } from '../systems/Hud.js';
-import { LevelUpPanel } from '../ui/LevelUpPanel.js';
+import { LevelUpScreen } from '../ui/LevelUpScreen.js';
 import { soundManager } from '../systems/SoundManager.js';
 import { BALANCE } from '../config.js';
 import { RunStatsTracker } from '../systems/RunStats.js';
@@ -86,7 +86,7 @@ export default class GameScene extends Phaser.Scene {
         this.upgradeSystem = new UpgradeSystem(this, this.player, this.weaponSystem);
         this.upgradeSystem.resetRunState();
         this.hud = new Hud(this);
-        this.levelUpPanel = new LevelUpPanel(this);
+        this.levelUpPanel = new LevelUpScreen(this);
         this.relicSystem = new RelicSystem(this);
 
         // Daily / difficulty toast
