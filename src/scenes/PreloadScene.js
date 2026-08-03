@@ -216,11 +216,15 @@ export default class PreloadScene extends Phaser.Scene {
         gRune.fillCircle(10, 10, 3);
         gRune.generateTexture('mine', 20, 20);
 
-        // Эссенция Луны
+        // Эссенция Луны (ядро + ободок — тинт задаёт цвет тира)
         const gOrb = this.make.graphics({ x: 0, y: 0, add: false });
-        gOrb.fillStyle(0x66ffcc, 1.0);
-        gOrb.fillCircle(8, 8, 8);
-        gOrb.generateTexture('xp_orb', 16, 16);
+        gOrb.fillStyle(0xffffff, 1.0);
+        gOrb.fillCircle(10, 10, 9);
+        gOrb.fillStyle(0xdddddd, 1.0);
+        gOrb.fillCircle(10, 10, 5);
+        gOrb.lineStyle(2, 0xffffff, 0.9);
+        gOrb.strokeCircle(10, 10, 9);
+        gOrb.generateTexture('xp_orb', 20, 20);
 
         // Туша мяса
         const gMeat = this.make.graphics({ x: 0, y: 0, add: false });

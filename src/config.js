@@ -25,6 +25,25 @@ export const BALANCE = {
     comboXpBonus: 0.08, // +8% XP per 10 combo steps, capped
     comboXpBonusCap: 0.40,
 
+    // XP orbs
+    xpOrbMaxActive: 120,
+    xpOrbLifetimeGreen: 11000,   // ms
+    xpOrbLifetimeCyan: 15000,
+    xpOrbLifetimeGold: 20000,
+    xpOrbLifetimeMoon: 24000,
+    xpOrbWarnMs: 2500,          // flash before expire
+    xpOrbMagnetMulGreen: 1.0,
+    xpOrbMagnetMulCyan: 1.08,
+    xpOrbMagnetMulGold: 1.18,
+    xpOrbMagnetMulMoon: 1.35,
+    xpOrbPullBase: 320,
+    xpOrbPullExtra: 380,
+    xpOrbScatterSpeed: 140,
+    xpOrbSplitThreshold: 40,    // split drops above this into multiple orbs
+    xpOrbComboMoonEvery: 15,    // spawn moon orb every N combo
+    xpOrbComboMoonValue: 35,    // base moon orb XP (+combo scale)
+    xpOrbShowPickupText: true,
+
     // Spawner
     spawnIntervalStart: 2000,
     spawnIntervalMin: 700,

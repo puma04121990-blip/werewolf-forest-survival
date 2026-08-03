@@ -1,6 +1,6 @@
 import { Player } from '../entities/Player.js';
 import { Bullet } from '../entities/Bullet.js';
-import { XpOrb } from '../entities/XpOrb.js';
+import { XpOrb, XP_TIER, splitXpValues } from '../entities/XpOrb.js';
 import { Mine } from '../entities/Mine.js';
 import { Rocket } from '../entities/Rocket.js';
 import { Spawner } from '../systems/Spawner.js';
@@ -97,7 +97,16 @@ export default class GameScene extends Phaser.Scene {
     }
 
     update(time, delta) {
-        if (this.isLevelingUp) return;
+        // During level-up vacuum, still animate orbs into the player
+        if (this.isLevelingUp) {
+            if (this._vacuumActive) {
+                this.xpOrbs.getChildren().forEach(orb => {
+                    if (orb.active && orb.update) orb.update(time, delta);
+                });
+                this.tryVacuumPickup();
+            }
+            return;
+        }
         if (!this.player || !this.player.active) return;
 
         this.gameTime += delta;
@@ -154,13 +163,150 @@ export default class GameScene extends Phaser.Scene {
         }
     }
 
-    spawnXpOrb(x, y, value) {
-        if (this.xpOrbs.countActive() > 140) {
-            const firstOrb = this.xpOrbs.getFirstAlive();
-            if (firstOrb) firstOrb.destroy();
-        }
-        const orb = new XpOrb(this, x, y, value);
+    /**
+     * Spawn a single XP orb.
+     * @param {number} x
+     * @param {number} y
+     * @param {number} value
+     * @param {{ tier?: string, scatter?: boolean }} [opts]
+     */
+    spawnXpOrb(x, y, value, opts = {}) {
+        if (!opts._skipCap) this.enforceXpOrbCap();
+        const orb = new XpOrb(this, x, y, value, opts);
         this.xpOrbs.add(orb);
+        return orb;
+    }
+
+    /**
+     * Split a large XP drop into multiple tiered orbs with scatter.
+     */
+    spawnXpBurst(x, y, totalValue) {
+        const pieces = splitXpValues(totalValue);
+        const n = pieces.length;
+        pieces.forEach((p, i) => {
+            const ang = (i / n) * Math.PI * 2 + Math.random() * 0.4;
+            const dist = n > 1 ? 12 + Math.random() * 22 : 0;
+            this.spawnXpOrb(
+                x + Math.cos(ang) * dist,
+                y + Math.sin(ang) * dist,
+                p.value,
+                { tier: p.tier, scatter: true }
+            );
+        });
+    }
+
+    /** Cap active orbs: merge oldest greens into one cyan instead of hard delete */
+    enforceXpOrbCap() {
+        const max = BALANCE.xpOrbMaxActive;
+        while (this.xpOrbs.countActive() >= max) {
+            const greens = this.xpOrbs.getChildren().filter(
+                o => o.active && o.tier === XP_TIER.GREEN
+            );
+            if (greens.length >= 2) {
+                const a = greens[0];
+                const b = greens[1];
+                const nx = (a.x + b.x) / 2;
+                const ny = (a.y + b.y) / 2;
+                const sum = a.value + b.value;
+                a.destroy();
+                b.destroy();
+                this.spawnXpOrb(nx, ny, sum, { scatter: false, _skipCap: true });
+            } else {
+                const oldest = this.xpOrbs.getChildren()
+                    .filter(o => o.active)
+                    .sort((a, b) => (b.age || 0) - (a.age || 0))[0];
+                if (oldest) oldest.destroy();
+                else break;
+            }
+        }
+    }
+
+    /** Vacuum every orb toward the player (level-up reward) */
+    startXpVacuum() {
+        this._vacuumActive = true;
+        this.xpOrbs.getChildren().forEach(orb => {
+            if (orb.active && orb.startVacuum) orb.startVacuum();
+        });
+    }
+
+    tryVacuumPickup() {
+        if (!this.player || !this.player.active) return;
+        this.xpOrbs.getChildren().forEach(orb => {
+            if (!orb.active || orb.collected) return;
+            const dist = Phaser.Math.Distance.Between(orb.x, orb.y, this.player.x, this.player.y);
+            if (dist < 28) {
+                this.collectXpOrb(orb, { vacuum: true });
+            }
+        });
+    }
+
+    collectXpOrb(orb, flags = {}) {
+        if (!orb || !orb.active || orb.collected) return;
+        orb.collected = true;
+
+        let value = orb.value;
+        // Combo multiplies XP on pickup (not vacuum bulk — already earned)
+        if (!flags.skipComboBonus && this.combo >= BALANCE.comboBonusEvery) {
+            const steps = Math.floor(this.combo / BALANCE.comboBonusEvery);
+            const bonus = Math.min(BALANCE.comboXpBonusCap, steps * BALANCE.comboXpBonus);
+            value = Math.floor(value * (1 + bonus));
+        }
+
+        // Moon orbs get a flat rarity bonus
+        if (orb.tier === XP_TIER.MOON) {
+            value = Math.floor(value * 1.15);
+        }
+
+        if (!flags.silent) {
+            soundManager.playXp();
+            this.showXpPickup(orb.x, orb.y, value, orb.tier);
+        }
+
+        // Pop VFX
+        const color = orb.tier === XP_TIER.GOLD ? 0xffd700
+            : orb.tier === XP_TIER.MOON ? 0xcc88ff
+            : orb.tier === XP_TIER.CYAN ? 0x44eeff
+            : 0x44ff88;
+        const ring = this.add.circle(orb.x, orb.y, 6, color, 0.55).setDepth(40);
+        this.tweens.add({
+            targets: ring,
+            radius: 22,
+            alpha: 0,
+            duration: 220,
+            onComplete: () => ring.destroy()
+        });
+
+        this.addXp(value);
+        orb.destroy();
+    }
+
+    showXpPickup(x, y, amount, tier = XP_TIER.GREEN) {
+        if (!BALANCE.xpOrbShowPickupText) return;
+        // Don't spam tiny greens every frame during vacuum
+        if (tier === XP_TIER.GREEN && amount < 15 && Math.random() > 0.35) return;
+
+        const color = tier === XP_TIER.GOLD ? '#ffd700'
+            : tier === XP_TIER.MOON ? '#ddaaff'
+            : tier === XP_TIER.CYAN ? '#66eeff'
+            : '#88ffaa';
+        const size = tier === XP_TIER.MOON || tier === XP_TIER.GOLD ? '16px' : '13px';
+        const label = tier === XP_TIER.MOON ? `☾ +${amount}` : `+${amount}`;
+
+        const t = this.add.text(x, y - 8, label, {
+            fontSize: size,
+            fill: color,
+            fontStyle: 'bold',
+            stroke: '#001108',
+            strokeThickness: 3
+        }).setOrigin(0.5).setDepth(55);
+
+        this.tweens.add({
+            targets: t,
+            y: y - 36,
+            alpha: 0,
+            duration: 480,
+            onComplete: () => t.destroy()
+        });
     }
 
     spawnHealthPickup(x, y, isBoss = false) {
@@ -224,18 +370,8 @@ export default class GameScene extends Phaser.Scene {
     }
 
     handlePlayerXpCollision(player, orb) {
-        if (!orb.active) return;
-
-        soundManager.playXp();
-        let value = orb.value;
-        // Combo XP bonus
-        if (this.combo >= BALANCE.comboBonusEvery) {
-            const steps = Math.floor(this.combo / BALANCE.comboBonusEvery);
-            const bonus = Math.min(BALANCE.comboXpBonusCap, steps * BALANCE.comboXpBonus);
-            value = Math.floor(value * (1 + bonus));
-        }
-        this.addXp(value);
-        orb.destroy();
+        if (!orb.active || orb.collected) return;
+        this.collectXpOrb(orb);
     }
 
     handlePlayerHealthCollision(player, med) {
@@ -280,24 +416,40 @@ export default class GameScene extends Phaser.Scene {
         this.isLevelingUp = true;
         this.physics.pause();
 
-        // Brief heal on level-up (werewolf thrives)
-        if (this.player && this.player.active) {
-            this.player.heal(8);
-        }
+        // Vacuum all essence into the werewolf before the upgrade panel
+        this.startXpVacuum();
+        this.hud.showToast('ЭССЕНЦИЯ ЛУНЫ', '#88ffcc');
 
-        const options = this.upgradeSystem.getRandomOptions(3);
-        this.levelUpPanel.show(options, (selectedOpt) => {
-            this.upgradeSystem.applyUpgrade(selectedOpt);
-            this.physics.resume();
-            this.isLevelingUp = false;
+        const finishVacuumAndShow = () => {
+            // Instantly absorb any leftovers (edge of map / stuck)
+            this.xpOrbs.getChildren().forEach(orb => {
+                if (orb.active && !orb.collected) {
+                    this.collectXpOrb(orb, { vacuum: true, silent: true, skipComboBonus: true });
+                }
+            });
+            this._vacuumActive = false;
 
-            if (this.currentXp >= this.xpToNextLevel) {
-                this.currentXp -= this.xpToNextLevel;
-                this.level += 1;
-                this.xpToNextLevel = Math.floor(this.xpToNextLevel * BALANCE.xpGrowth);
-                this.triggerLevelUp();
+            if (this.player && this.player.active) {
+                this.player.heal(8);
             }
-        });
+
+            const options = this.upgradeSystem.getRandomOptions(3);
+            this.levelUpPanel.show(options, (selectedOpt) => {
+                this.upgradeSystem.applyUpgrade(selectedOpt);
+                this.physics.resume();
+                this.isLevelingUp = false;
+
+                if (this.currentXp >= this.xpToNextLevel) {
+                    this.currentXp -= this.xpToNextLevel;
+                    this.level += 1;
+                    this.xpToNextLevel = Math.floor(this.xpToNextLevel * BALANCE.xpGrowth);
+                    this.triggerLevelUp();
+                }
+            });
+        };
+
+        // Let orbs fly in for a short beat, then force-collect
+        this.time.delayedCall(420, finishVacuumAndShow);
     }
 
     onEnemyKilled(enemy) {
@@ -306,7 +458,14 @@ export default class GameScene extends Phaser.Scene {
         this.comboTimer = BALANCE.xpComboWindow;
         if (this.combo > this.maxCombo) this.maxCombo = this.combo;
 
-        if (this.combo > 0 && this.combo % 25 === 0) {
+        // Combo moon orb — rare purple essence
+        if (this.combo > 0 && this.combo % BALANCE.xpOrbComboMoonEvery === 0) {
+            const bonus = BALANCE.xpOrbComboMoonValue + Math.floor(this.combo * 0.8);
+            const ox = enemy && enemy.x != null ? enemy.x : this.player.x;
+            const oy = enemy && enemy.y != null ? enemy.y : this.player.y;
+            this.spawnXpOrb(ox, oy - 20, bonus, { tier: XP_TIER.MOON, scatter: true });
+            this.hud.showToast(`☾ ЛУННАЯ ЭССЕНЦИЯ  ×${this.combo}`, '#ddaaff');
+        } else if (this.combo > 0 && this.combo % 25 === 0) {
             this.hud.showToast(`КОМБО ×${this.combo}!`, '#ff8844');
         }
 

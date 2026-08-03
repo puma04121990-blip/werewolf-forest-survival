@@ -210,16 +210,18 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             });
         }
 
-        let xp = this.xpValue;
-        // Boss and elite drop richer orbs (split for juicier pickup)
+        const xp = this.xpValue;
+        // Burst split: green / cyan / gold piles feel better than one orb
+        if (this.scene.spawnXpBurst) {
+            this.scene.spawnXpBurst(this.x, this.y, xp);
+        } else {
+            this.scene.spawnXpOrb(this.x, this.y, xp);
+        }
+
         if (this.isBoss) {
-            this.scene.spawnXpOrb(this.x, this.y, Math.floor(xp * 0.5));
-            this.scene.spawnXpOrb(this.x + 18, this.y - 10, Math.floor(xp * 0.3));
-            this.scene.spawnXpOrb(this.x - 14, this.y + 12, Math.floor(xp * 0.2));
             this.scene.spawnHealthPickup(this.x, this.y, true);
             this.scene.cameras.main.shake(250, 0.02);
         } else {
-            this.scene.spawnXpOrb(this.x, this.y, xp);
             const dropRoll = Math.random();
             const chance = this.type === 'tank' ? 0.18 : this.type === 'elite' ? 0.25 : 0.09;
             if (dropRoll < chance) {
