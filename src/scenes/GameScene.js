@@ -383,6 +383,8 @@ export default class GameScene extends Phaser.Scene {
 
     handlePlayerEnemyCollision(player, enemy) {
         if (!player.active || !enemy.active) return;
+        // During dash: I-frames block damage; body strike is handled in Player.updateDashCombat
+        if (player.isDashing || player.isInvulnerable) return;
         player.takeDamage(enemy.damage);
     }
 

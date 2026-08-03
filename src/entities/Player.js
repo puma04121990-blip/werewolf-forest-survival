@@ -20,7 +20,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.critChance = 0.05;
         this.critMultiplier = 1.75;
         this.lifesteal = 0;
-        this.armor = 0; // damage reduction 0–0.45
+        this.armor = 0;
         this.regenPerSec = BALANCE.baseRegenPerSec;
 
         this.canDash = true;
@@ -29,6 +29,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.dashDuration = BALANCE.dashDuration;
         this.dashCooldownRemaining = 0;
         this.isInvulnerable = false;
+
+        // Dash combat state
+        this.dashDirX = 0;
+        this.dashDirY = 0;
+        this.dashHitEnemies = new Set();
+        this.dashTrailHit = new Set(); // enemy ids hit by trail this dash
+        this.dashTrailNodes = []; // { x, y, age }
+        this.dashTrailAcc = 0;
+        this.dashSlashGfx = null;
 
         this.trailTimer = 0;
         this.regenTimer = 0;
@@ -56,6 +65,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.handleMovement(time);
         this.updateTrail(delta);
         this.handleRegen(delta);
+
+        if (this.isDashing) {
+            this.updateDashCombat(delta);
+        } else if (this.dashTrailNodes.length > 0) {
+            // Trail can outlive the dash briefly
+            this.updateDashTrailOnly(delta);
+        }
     }
 
     handleMovement(time) {
@@ -100,28 +116,43 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     dash(dirX, dirY) {
+        // Normalize
+        const len = Math.hypot(dirX, dirY) || 1;
+        dirX /= len;
+        dirY /= len;
+
         this.canDash = false;
         this.isDashing = true;
         this.isInvulnerable = true;
         this.dashCooldownRemaining = this.dashCooldown;
+        this.dashDirX = dirX;
+        this.dashDirY = dirY;
+        this.dashHitEnemies.clear();
+        this.dashTrailHit.clear();
+        this.dashTrailNodes = [];
+        this.dashTrailAcc = 0;
 
         soundManager.playDash();
 
         const dashSpeed = this.speed * BALANCE.dashSpeedMul;
         this.setVelocity(dirX * dashSpeed, dirY * dashSpeed);
         this.setAlpha(0.55);
+        this.rotation = Math.atan2(dirY, dirX) + Math.PI / 2;
 
-        // Brief trail burst
-        for (let i = 0; i < 4; i++) {
-            this.scene.time.delayedCall(i * 30, () => {
+        // Opening slash VFX
+        this.spawnDashSlashVfx(dirX, dirY);
+
+        // Ghost clones along dash
+        for (let i = 0; i < 5; i++) {
+            this.scene.time.delayedCall(i * 28, () => {
                 if (!this.active) return;
                 const clone = this.scene.add.image(this.x, this.y, 'player');
-                clone.setRotation(this.rotation).setAlpha(0.35).setTint(0x88ffaa);
+                clone.setRotation(this.rotation).setAlpha(0.4).setTint(0x88ffaa).setDepth(6);
                 this.scene.tweens.add({
                     targets: clone,
                     alpha: 0,
-                    scale: 0.7,
-                    duration: 180,
+                    scale: 0.65,
+                    duration: 200,
                     onComplete: () => clone.destroy()
                 });
             });
@@ -129,8 +160,165 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
         this.scene.time.delayedCall(this.dashDuration, () => {
             this.isDashing = false;
-            this.isInvulnerable = false;
-            this.setAlpha(1.0);
+            // Keep i-frames a hair longer than the dash body so exit isn't punishy
+            this.scene.time.delayedCall(40, () => {
+                if (this.active && !this.isDashing) {
+                    this.isInvulnerable = false;
+                    this.setAlpha(1.0);
+                }
+            });
+        });
+    }
+
+    spawnDashSlashVfx(dirX, dirY) {
+        const g = this.scene.add.graphics().setDepth(12);
+        const angle = Math.atan2(dirY, dirX);
+        const arc = () => {
+            g.clear();
+            g.lineStyle(3, 0xaaffcc, 0.85);
+            g.beginPath();
+            const r = 34;
+            g.arc(this.x, this.y, r, angle - 1.1, angle + 1.1, false);
+            g.strokePath();
+            g.lineStyle(2, 0xffffff, 0.5);
+            g.beginPath();
+            g.arc(this.x, this.y, r - 6, angle - 0.7, angle + 0.7, false);
+            g.strokePath();
+        };
+        arc();
+        this.scene.tweens.add({
+            targets: { t: 0 },
+            t: 1,
+            duration: 160,
+            onUpdate: () => {
+                if (this.active) arc();
+            },
+            onComplete: () => g.destroy()
+        });
+    }
+
+    updateDashCombat(delta) {
+        // Body strike — once per enemy per dash
+        this.applyDashBodyHits();
+
+        // Drop trail nodes
+        this.dashTrailAcc += delta;
+        while (this.dashTrailAcc >= BALANCE.dashTrailTickMs) {
+            this.dashTrailAcc -= BALANCE.dashTrailTickMs;
+            this.dashTrailNodes.push({ x: this.x, y: this.y, age: 0 });
+            this.spawnTrailSlashMark(this.x, this.y);
+        }
+
+        this.updateDashTrailOnly(delta);
+    }
+
+    updateDashTrailOnly(delta) {
+        const life = BALANCE.dashTrailLifeMs;
+        const radius = BALANCE.dashTrailRadius;
+
+        for (let i = this.dashTrailNodes.length - 1; i >= 0; i--) {
+            const node = this.dashTrailNodes[i];
+            node.age += delta;
+            if (node.age >= life) {
+                this.dashTrailNodes.splice(i, 1);
+                continue;
+            }
+            this.applyTrailHitsAt(node.x, node.y, radius);
+        }
+    }
+
+    applyDashBodyHits() {
+        const enemies = this.scene.enemies;
+        if (!enemies) return;
+
+        const radius = BALANCE.dashHitRadius;
+        const kb = BALANCE.dashKnockback;
+
+        enemies.getChildren().forEach(enemy => {
+            if (!enemy.active || this.dashHitEnemies.has(enemy)) return;
+            const dist = Phaser.Math.Distance.Between(this.x, this.y, enemy.x, enemy.y);
+            if (dist > radius) return;
+
+            this.dashHitEnemies.add(enemy);
+            this.dealDashDamage(enemy, BALANCE.dashDamage, true);
+
+            // Knockback along dash direction
+            if (enemy.body) {
+                enemy.x += this.dashDirX * (kb * 0.15);
+                enemy.y += this.dashDirY * (kb * 0.15);
+                enemy.setVelocity?.(
+                    this.dashDirX * kb,
+                    this.dashDirY * kb
+                );
+            }
+
+            // Hit spark
+            const spark = this.scene.add.circle(enemy.x, enemy.y, 8, 0xaaffcc, 0.8).setDepth(20);
+            this.scene.tweens.add({
+                targets: spark,
+                radius: 22,
+                alpha: 0,
+                duration: 160,
+                onComplete: () => spark.destroy()
+            });
+            this.scene.cameras.main.shake(40, 0.004);
+        });
+    }
+
+    applyTrailHitsAt(x, y, radius) {
+        const enemies = this.scene.enemies;
+        if (!enemies) return;
+
+        enemies.getChildren().forEach(enemy => {
+            if (!enemy.active) return;
+            // Trail hits enemies not already struck by body, or weaker re-hit key
+            if (this.dashHitEnemies.has(enemy) || this.dashTrailHit.has(enemy)) return;
+            const dist = Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y);
+            if (dist > radius) return;
+
+            this.dashTrailHit.add(enemy);
+            this.dealDashDamage(enemy, BALANCE.dashTrailDamage, false);
+        });
+    }
+
+    dealDashDamage(enemy, baseDamage, isBody) {
+        if (!enemy || !enemy.active) return;
+        if (this.scene.dealDamageToEnemy) {
+            this.scene.dealDamageToEnemy(enemy, baseDamage, { forceNumber: true });
+        } else if (enemy.takeDamage) {
+            const { damage, isCrit } = this.rollDamage(baseDamage);
+            enemy.takeDamage(damage, isCrit, { forceNumber: true });
+        }
+
+        if (isBody && Math.random() < 0.35) {
+            soundManager.playLaser && soundManager.playLaser();
+        }
+    }
+
+    spawnTrailSlashMark(x, y) {
+        const g = this.scene.add.graphics().setDepth(5);
+        const angle = Math.atan2(this.dashDirY, this.dashDirX);
+        g.lineStyle(2.5, 0x66ffaa, 0.7);
+        const len = 18;
+        const perp = angle + Math.PI / 2;
+        g.lineBetween(
+            x + Math.cos(perp) * len,
+            y + Math.sin(perp) * len,
+            x - Math.cos(perp) * len,
+            y - Math.sin(perp) * len
+        );
+        g.lineStyle(1.5, 0xffffff, 0.4);
+        g.lineBetween(
+            x + Math.cos(angle) * 6,
+            y + Math.sin(angle) * 6,
+            x - Math.cos(angle) * 10,
+            y - Math.sin(angle) * 10
+        );
+        this.scene.tweens.add({
+            targets: g,
+            alpha: 0,
+            duration: BALANCE.dashTrailLifeMs,
+            onComplete: () => g.destroy()
         });
     }
 
@@ -156,8 +344,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
                 this.trailTimer = 0;
                 const clone = this.scene.add.image(this.x, this.y, 'player');
                 clone.setRotation(this.rotation);
-                clone.setAlpha(0.28);
-                clone.setTint(0x00ffcc);
+                clone.setAlpha(this.isDashing ? 0.4 : 0.28);
+                clone.setTint(this.isDashing ? 0x88ffaa : 0x00ffcc);
                 this.scene.tweens.add({
                     targets: clone,
                     alpha: 0,
@@ -185,7 +373,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         });
 
         this.scene.time.delayedCall(BALANCE.invulnAfterHit, () => {
-            if (this.active) this.isInvulnerable = false;
+            if (this.active && !this.isDashing) this.isInvulnerable = false;
         });
 
         if (this.health <= 0) {
@@ -208,7 +396,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         return this.health - before;
     }
 
-    /** Roll crit and return { damage, isCrit } */
     rollDamage(baseDamage) {
         const isCrit = Math.random() < this.critChance;
         const damage = baseDamage * this.damageMultiplier * (isCrit ? this.critMultiplier : 1);

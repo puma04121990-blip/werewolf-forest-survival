@@ -14,6 +14,14 @@ export const BALANCE = {
     dashCooldown: 2800,
     dashDuration: 220,
     dashSpeedMul: 3.2,
+    // Dash combat (I-frames already on)
+    dashDamage: 32,           // body strike per enemy per dash
+    dashTrailDamage: 16,      // residual claw trail
+    dashHitRadius: 38,
+    dashTrailRadius: 30,
+    dashTrailTickMs: 28,      // how often to drop a trail node
+    dashTrailLifeMs: 200,     // how long each trail node hurts
+    dashKnockback: 140,
     invulnAfterHit: 650,
     baseRegenPerSec: 0.8,
 
