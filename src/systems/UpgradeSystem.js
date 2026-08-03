@@ -343,6 +343,40 @@ export class UpgradeSystem {
         return list;
     }
 
+    /**
+     * Full loadout for pause / summary screens.
+     * @returns {{ weapons: {key,name,icon,level}[], passives: {id,name,icon,stacks}[] }}
+     */
+    getLoadoutSummary() {
+        const weapons = [];
+        Object.keys(WEAPON_META).forEach(key => {
+            const level = this.weaponSystem.getWeaponLevel(key);
+            if (level <= 0) return;
+            const meta = WEAPON_META[key];
+            weapons.push({
+                key,
+                name: meta.name,
+                icon: meta.icon,
+                level,
+                line: `${meta.icon} ${meta.name}  Ур.${level}`
+            });
+        });
+        // Sort by level desc, then name
+        weapons.sort((a, b) => b.level - a.level || a.name.localeCompare(b.name, 'ru'));
+
+        const passives = this.getPassiveStacksForHud().map(p => ({
+            id: p.id,
+            name: p.name,
+            icon: p.icon,
+            stacks: p.stacks,
+            line: p.stacks > 1
+                ? `${p.icon} ${p.name} ×${p.stacks}`
+                : `${p.icon} ${p.name}`
+        }));
+
+        return { weapons, passives };
+    }
+
     applyUpgrade(option) {
         if (option.type === 'weapon') {
             this.weaponSystem.upgradeWeapon(option.key);
