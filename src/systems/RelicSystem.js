@@ -1,5 +1,6 @@
 import { BALANCE } from '../config.js';
 import { soundManager } from './SoundManager.js';
+import { sceneRandom } from './RunSettings.js';
 
 /** Arena power-up relic definitions */
 export const RELICS = {
@@ -53,7 +54,7 @@ const RELIC_IDS = Object.keys(RELICS);
 export class RelicSystem {
     constructor(scene) {
         this.scene = scene;
-        this.spawnTimer = 8000 + Math.random() * 4000;
+        this.spawnTimer = 8000 + sceneRandom(scene) * 4000;
         this.group = scene.physics.add.group();
         this.buffs = {
             shieldUntil: 0,
@@ -77,7 +78,7 @@ export class RelicSystem {
         this.spawnTimer -= delta;
         if (this.spawnTimer <= 0) {
             this.spawnTimer = BALANCE.relicSpawnIntervalMin +
-                Math.random() * (BALANCE.relicSpawnIntervalMax - BALANCE.relicSpawnIntervalMin);
+                sceneRandom(this.scene) * (BALANCE.relicSpawnIntervalMax - BALANCE.relicSpawnIntervalMin);
             this.trySpawn();
         }
 
@@ -101,9 +102,9 @@ export class RelicSystem {
 
     trySpawn() {
         if (this.group.countActive() >= (BALANCE.relicMaxActive || 2)) return;
-        if (Math.random() > (BALANCE.relicSpawnChance || 0.85)) return;
+        if (sceneRandom(this.scene) > (BALANCE.relicSpawnChance || 0.85)) return;
 
-        const id = RELIC_IDS[Math.floor(Math.random() * RELIC_IDS.length)];
+        const id = RELIC_IDS[Math.floor(sceneRandom(this.scene) * RELIC_IDS.length)];
         this.spawnRelic(id);
     }
 
@@ -114,15 +115,15 @@ export class RelicSystem {
         if (enemy.isBoss) chance = 0.55;
         else if (enemy.type === 'elite') chance = 0.18;
         else if (enemy.type === 'tank') chance = 0.08;
-        if (Math.random() > chance) return;
+        if (sceneRandom(this.scene) > chance) return;
         if (this.group.countActive() >= (BALANCE.relicMaxActive || 2) + 1) return;
 
         // Prefer clear/shield on bosses
         let id;
         if (enemy.isBoss) {
-            id = Math.random() < 0.4 ? 'clear' : (Math.random() < 0.5 ? 'shield' : RELIC_IDS[Math.floor(Math.random() * RELIC_IDS.length)]);
+            id = sceneRandom(this.scene) < 0.4 ? 'clear' : (sceneRandom(this.scene) < 0.5 ? 'shield' : RELIC_IDS[Math.floor(sceneRandom(this.scene) * RELIC_IDS.length)]);
         } else {
-            id = RELIC_IDS[Math.floor(Math.random() * RELIC_IDS.length)];
+            id = RELIC_IDS[Math.floor(sceneRandom(this.scene) * RELIC_IDS.length)];
         }
         this.spawnRelic(id, enemy.x, enemy.y);
     }
@@ -133,8 +134,9 @@ export class RelicSystem {
 
         const w = this.scene.scale.width;
         const h = this.scene.scale.height;
-        const px = x != null ? x : Phaser.Math.Clamp(80 + Math.random() * (w - 160), 60, w - 60);
-        const py = y != null ? y : Phaser.Math.Clamp(80 + Math.random() * (h - 160), 60, h - 60);
+        const r = () => sceneRandom(this.scene);
+        const px = x != null ? x : Phaser.Math.Clamp(80 + r() * (w - 160), 60, w - 60);
+        const py = y != null ? y : Phaser.Math.Clamp(80 + r() * (h - 160), 60, h - 60);
 
         const tex = this.scene.textures.exists('relic_pickup') ? 'relic_pickup' : 'xp_orb';
         const spr = this.scene.physics.add.sprite(px, py, tex);
@@ -143,7 +145,7 @@ export class RelicSystem {
         spr.setDepth(12);
         spr.relicId = id;
         spr.life = BALANCE.relicLifetimeMs || 14000;
-        spr._ph = Math.random() * 10;
+        spr._ph = r() * 10;
 
         // Icon label above
         spr.label = this.scene.add.text(px, py - 22, def.icon, {

@@ -2,6 +2,7 @@ import { getWeaponUpgradeDpsInfo, getPassiveDpsHint } from './WeaponStats.js';
 import { getReadyEvolutionIds, evolutionToCard, EVOLUTIONS } from './Evolutions.js';
 import { getAvailableCurseCards, CURSES } from './Curses.js';
 import { COMBAT_SYNERGIES, getSynergyPairsForUi } from './Synergies.js';
+import { sceneRandom } from './RunSettings.js';
 
 /** Weapon display names for synergy text */
 const WEAPON_META = {
@@ -403,7 +404,7 @@ export class UpgradeSystem {
         const pool = [...weighted];
         for (let i = 0; i < count && pool.length > 0; i++) {
             const total = pool.reduce((s, x) => s + x.w, 0);
-            let r = Math.random() * total;
+            let r = sceneRandom(this.scene) * total;
             let idx = 0;
             for (; idx < pool.length; idx++) {
                 r -= pool[idx].w;

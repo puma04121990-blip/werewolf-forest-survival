@@ -7,6 +7,7 @@ import {
     buildShareText
 } from '../systems/RunStats.js';
 import { MetaProgress } from '../systems/MetaProgress.js';
+import { DIFFICULTIES, RunSettings } from '../systems/RunSettings.js';
 
 export default class GameOverScene extends Phaser.Scene {
     constructor() {
@@ -21,7 +22,11 @@ export default class GameOverScene extends Phaser.Scene {
             maxCombo: 0,
             wave: 1,
             deathCause: null,
-            damageByWeapon: {}
+            damageByWeapon: {},
+            difficultyId: 'normal',
+            isDaily: false,
+            dailyResult: null,
+            essenceMul: 1
         };
     }
 
@@ -67,13 +72,27 @@ export default class GameOverScene extends Phaser.Scene {
         const secs = (stats.time % 60).toString().padStart(2, '0');
         const coreY = titleY + (isPortrait ? 92 : 110);
 
-        const coreLine = `⏱ ${mins}:${secs}   💀 ${stats.kills}   Ур.${stats.level}   Волна ${stats.wave || 1}   Комбо ×${stats.maxCombo || 0}`;
+        const diff = DIFFICULTIES[stats.difficultyId] || DIFFICULTIES.normal;
+        const modeTag = stats.isDaily ? `📅 DAILY` : 'Охота';
+        const coreLine = `${modeTag}  ${diff.icon} ${diff.name}   ⏱ ${mins}:${secs}   💀 ${stats.kills}   Ур.${stats.level}   Волна ${stats.wave || 1}`;
         this.add.text(width / 2, coreY, coreLine, {
-            fontSize: isPortrait ? '12px' : '15px',
+            fontSize: isPortrait ? '11px' : '14px',
             fill: '#cceeee',
             align: 'center',
             wordWrap: { width: width * 0.92 }
         }).setOrigin(0.5);
+
+        if (stats.isDaily && stats.dailyResult) {
+            const dr = stats.dailyResult;
+            const msg = dr.isNew
+                ? '★ НОВЫЙ РЕКОРД DAILY!'
+                : `Daily best: ${Math.floor(dr.best.time / 60)}:${String(dr.best.time % 60).padStart(2, '0')} / ${dr.best.kills}`;
+            this.add.text(width / 2, coreY + 18, msg, {
+                fontSize: '13px',
+                fill: dr.isNew ? '#ffe600' : '#99aacc',
+                fontStyle: 'bold'
+            }).setOrigin(0.5);
+        }
 
         // Damage breakdown
         const breakdown = buildDamageBreakdown(stats.damageByWeapon || {});
@@ -162,7 +181,11 @@ export default class GameOverScene extends Phaser.Scene {
 
         this.makeButton(width / 2, btnY + 48, btnW, 'ИГРАТЬ СНОВА', 0x00ffcc, () => {
             soundManager.playLaser();
-            this.scene.start('GameScene');
+            const runConfig = RunSettings.buildRunConfig({
+                mode: stats.isDaily ? 'daily' : 'casual',
+                difficulty: stats.difficultyId || 'normal'
+            });
+            this.scene.start('GameScene', { runConfig });
         });
 
         this.makeButton(width / 2, btnY + 92, btnW, '🏠 ЛОГОВО (МЕТА)', 0xaa88ff, () => {

@@ -13,10 +13,28 @@ import { BALANCE } from '../config.js';
 import { RunStatsTracker } from '../systems/RunStats.js';
 import { MetaProgress } from '../systems/MetaProgress.js';
 import { RelicSystem } from '../systems/RelicSystem.js';
+import { RunSettings, createRng, DIFFICULTIES } from '../systems/RunSettings.js';
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
         super('GameScene');
+    }
+
+    init(data = {}) {
+        // From menu: { mode, difficulty } or full runConfig
+        if (data.runConfig) {
+            this.runConfig = data.runConfig;
+        } else {
+            this.runConfig = RunSettings.buildRunConfig({
+                mode: data.mode || 'casual',
+                difficulty: data.difficulty || RunSettings.getDifficultyId()
+            });
+        }
+        if (this.runConfig.seed != null) {
+            this.rng = createRng(this.runConfig.seed);
+        } else {
+            this.rng = Math.random.bind(Math);
+        }
     }
 
     create() {
@@ -32,9 +50,21 @@ export default class GameScene extends Phaser.Scene {
         this.maxCombo = 0;
         this.runStats = new RunStatsTracker();
 
+        if (!this.runConfig) {
+            this.runConfig = RunSettings.buildRunConfig({});
+            this.rng = Math.random.bind(Math);
+        }
+
         this.createForestBackground();
 
         this.player = new Player(this, this.scale.width / 2, this.scale.height / 2);
+
+        // Difficulty: player HP
+        const dHp = this.runConfig.difficulty?.playerHpMul ?? 1;
+        if (dHp !== 1) {
+            this.player.maxHealth = Math.round(this.player.maxHealth * dHp);
+            this.player.health = this.player.maxHealth;
+        }
 
         // Meta: skin
         const skinMeta = MetaProgress.getSkinMeta(MetaProgress.getSelectedSkin());
@@ -58,6 +88,21 @@ export default class GameScene extends Phaser.Scene {
         this.hud = new Hud(this);
         this.levelUpPanel = new LevelUpPanel(this);
         this.relicSystem = new RelicSystem(this);
+
+        // Daily / difficulty toast
+        const diff = this.runConfig.difficulty || DIFFICULTIES.normal;
+        if (this.runConfig.isDaily) {
+            this.time.delayedCall(400, () => {
+                this.hud?.showToast?.(
+                    `📅 DAILY ${this.runConfig.dateKey} · ${diff.icon} ${diff.name}`,
+                    diff.color
+                );
+            });
+        } else if (diff.id !== 'normal') {
+            this.time.delayedCall(400, () => {
+                this.hud?.showToast?.(`${diff.icon} ${diff.name}`, diff.color);
+            });
+        }
 
         this.physics.add.overlap(this.playerBullets, this.enemies, this.handleBulletEnemyCollision, null, this);
         this.physics.add.overlap(this.enemyBullets, this.player, this.handleEnemyBulletPlayerCollision, null, this);
@@ -473,7 +518,8 @@ export default class GameScene extends Phaser.Scene {
     }
 
     addXp(amount) {
-        this.currentXp += amount;
+        const mul = this.runConfig?.difficulty?.xpMul ?? 1;
+        this.currentXp += Math.floor(amount * mul);
         if (this.currentXp >= this.xpToNextLevel && !this.isLevelingUp) {
             this.currentXp -= this.xpToNextLevel;
             this.level += 1;
@@ -660,15 +706,31 @@ export default class GameScene extends Phaser.Scene {
         if (this.runStats) this.runStats.recordDeath();
         this.saveBestRun();
         const snap = this.runStats ? this.runStats.getSnapshot() : {};
+        const stats = {
+            kills: this.kills,
+            time: Math.floor(this.gameTime / 1000),
+            level: this.level,
+            maxCombo: this.maxCombo,
+            wave: this.spawner ? this.spawner.difficultyLevel : 1,
+            deathCause: snap.deathCause || null,
+            damageByWeapon: snap.damageByWeapon || {},
+            difficultyId: this.runConfig?.difficultyId || 'normal',
+            difficultyName: this.runConfig?.difficulty?.name || 'Нормал',
+            isDaily: !!this.runConfig?.isDaily,
+            dateKey: this.runConfig?.dateKey || null,
+            seed: this.runConfig?.seed ?? null,
+            essenceMul: this.runConfig?.difficulty?.essenceMul ?? 1
+        };
+
+        let dailyResult = null;
+        if (stats.isDaily) {
+            dailyResult = RunSettings.submitDailyRun(stats, stats.difficultyId);
+        }
+
         this.time.delayedCall(900, () => {
             this.scene.start('GameOverScene', {
-                kills: this.kills,
-                time: Math.floor(this.gameTime / 1000),
-                level: this.level,
-                maxCombo: this.maxCombo,
-                wave: this.spawner ? this.spawner.difficultyLevel : 1,
-                deathCause: snap.deathCause || null,
-                damageByWeapon: snap.damageByWeapon || {}
+                ...stats,
+                dailyResult
             });
         });
     }
@@ -681,9 +743,10 @@ export default class GameScene extends Phaser.Scene {
                 time: Math.floor(this.gameTime / 1000),
                 kills: this.kills,
                 level: this.level,
-                maxCombo: this.maxCombo
+                maxCombo: this.maxCombo,
+                difficulty: this.runConfig?.difficultyId || 'normal'
             };
-            // Best = longest survival, then kills
+            // Best = longest survival, then kills (all modes)
             if (!prev || run.time > prev.time || (run.time === prev.time && run.kills > prev.kills)) {
                 localStorage.setItem(key, JSON.stringify(run));
             }

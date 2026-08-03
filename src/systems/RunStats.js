@@ -81,9 +81,12 @@ export function buildShareText(stats) {
     const death = formatDeathCause(stats.deathCause);
     const dmg = buildDamageBreakdown(stats.damageByWeapon || {});
     const top = dmg.slice(0, 4).map(d => `${d.icon} ${d.name} ${d.pct}%`).join(' · ');
+    const mode = stats.isDaily ? `📅 Daily ${stats.dateKey || ''}` : 'Охота';
+    const diff = stats.difficultyName || stats.difficultyId || 'Нормал';
 
     return [
         '🐺 Оборотень: Лесное Выживание',
+        `${mode}  ·  ${diff}`,
         `⏱ ${mins}:${secs}  ·  💀 ${stats.kills || 0}  ·  Ур.${stats.level || 1}  ·  Волна ${stats.wave || 1}`,
         `Макс. комбо ×${stats.maxCombo || 0}`,
         `Убит: ${death.short}`,

@@ -308,13 +308,14 @@ export class MetaProgress {
         const level = stats.level || 1;
         const wave = stats.wave || 1;
         const maxCombo = stats.maxCombo || 0;
+        const mul = stats.essenceMul != null ? stats.essenceMul : 1;
         const raw =
             Math.floor(time / 12) +
             Math.floor(kills / 3) +
             level * 2 +
             wave +
             Math.floor(maxCombo / 20);
-        return Math.max(5, raw);
+        return Math.max(5, Math.floor(raw * mul));
     }
 
     /**

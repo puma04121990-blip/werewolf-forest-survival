@@ -34,8 +34,11 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
     initTypeStats(type, difficulty = 1) {
         const d = Math.max(0, difficulty - 1);
-        const hpMul = 1 + d * 0.14;
-        const dmgMul = 1 + d * 0.09;
+        const runDiff = this.scene?.runConfig?.difficulty;
+        const runHp = runDiff?.enemyHpMul ?? 1;
+        const runDmg = runDiff?.enemyDmgMul ?? 1;
+        const hpMul = (1 + d * 0.14) * runHp;
+        const dmgMul = (1 + d * 0.09) * runDmg;
         const spdMul = 1 + d * 0.03;
 
         switch (type) {

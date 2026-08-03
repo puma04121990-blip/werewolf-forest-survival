@@ -1,5 +1,6 @@
 import { Enemy } from '../entities/Enemy.js';
 import { BALANCE } from '../config.js';
+import { sceneRandom } from './RunSettings.js';
 
 /** Ordered first appearances, then cycles */
 export const BOSS_ROSTER = ['boss', 'boss_witch', 'boss_beast'];
@@ -9,13 +10,23 @@ export class Spawner {
         this.scene = scene;
         this.player = player;
 
+        const diff = scene.runConfig?.difficulty;
+        const spawnMul = diff?.spawnIntervalMul ?? 1;
+        const maxMul = diff?.maxEnemiesMul ?? 1;
+
         this.spawnTimer = 400;
-        this.spawnInterval = BALANCE.spawnIntervalStart;
+        this.spawnInterval = BALANCE.spawnIntervalStart * spawnMul;
+        this.spawnIntervalMin = BALANCE.spawnIntervalMin * spawnMul;
         this.difficultyTimer = 0;
         this.difficultyLevel = 1;
-        this.maxActiveEnemies = BALANCE.maxEnemiesStart;
+        this.maxActiveEnemies = Math.round(BALANCE.maxEnemiesStart * maxMul);
+        this.maxActiveEnemiesCap = Math.round(BALANCE.maxEnemiesCap * maxMul);
         this.bossesSpawned = 0;
         this.nextBossAt = BALANCE.bossIntervalSec;
+    }
+
+    rng() {
+        return sceneRandom(this.scene);
     }
 
     update(gameTimeMs, delta, enemyGroup) {
@@ -29,11 +40,11 @@ export class Spawner {
             this.difficultyTimer = 0;
             this.difficultyLevel += 1;
             this.spawnInterval = Math.max(
-                BALANCE.spawnIntervalMin,
+                this.spawnIntervalMin,
                 this.spawnInterval - 110
             );
             this.maxActiveEnemies = Math.min(
-                BALANCE.maxEnemiesCap,
+                this.maxActiveEnemiesCap,
                 this.maxActiveEnemies + 4
             );
             this.scene.events.emit('difficultyUp', this.difficultyLevel);
@@ -82,7 +93,7 @@ export class Spawner {
 
     getRandomEnemyType() {
         const d = this.difficultyLevel;
-        const rand = Math.random();
+        const rand = this.rng();
 
         if (d >= 6 && rand < 0.12) return 'elite';
         if (d >= 4 && rand < 0.22) return 'shooter';
@@ -95,27 +106,28 @@ export class Spawner {
         const padding = 70;
         const width = this.scene.scale.width;
         const height = this.scene.scale.height;
+        const r = () => this.rng();
 
         let x, y;
-        const side = Math.floor(Math.random() * 4);
+        const side = Math.floor(r() * 4);
 
         switch (side) {
             case 0:
-                x = Math.random() * width;
+                x = r() * width;
                 y = -padding;
                 break;
             case 1:
                 x = width + padding;
-                y = Math.random() * height;
+                y = r() * height;
                 break;
             case 2:
-                x = Math.random() * width;
+                x = r() * width;
                 y = height + padding;
                 break;
             case 3:
             default:
                 x = -padding;
-                y = Math.random() * height;
+                y = r() * height;
                 break;
         }
 

@@ -44,6 +44,19 @@ export class Hud {
             fontStyle: 'bold'
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
+        // Difficulty / daily tag under wave
+        const rc = scene.runConfig;
+        let modeLabel = '';
+        if (rc?.isDaily) modeLabel = '📅 DAILY';
+        if (rc?.difficulty && rc.difficulty.id !== 'normal') {
+            modeLabel += (modeLabel ? ' · ' : '') + `${rc.difficulty.icon} ${rc.difficulty.name}`;
+        }
+        this.modeText = scene.add.text(scene.scale.width / 2, 56, modeLabel, {
+            fontSize: '11px',
+            fill: rc?.difficulty?.color || '#889988',
+            fontStyle: 'bold'
+        }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100).setVisible(!!modeLabel);
+
         this.levelText = scene.add.text(scene.scale.width - 100, 18, 'УР 1', {
             fontSize: '20px',
             fill: '#ffe600',
