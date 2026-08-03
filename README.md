@@ -9,8 +9,14 @@
 ## Как запустить
 
 1. Клонируй репозиторий
-2. Открой `index.html` в браузере (или используй любой локальный сервер)
+2. **Не открывай `index.html` как file://** — нужны ES modules + локальный сервер
 3. Рекомендуется: `npx serve .` или Live Server
+
+### Онлайн (GitHub Pages)
+
+**https://puma04121990-blip.github.io/werewolf-forest-survival/**
+
+(нужен путь `/werewolf-forest-survival/`, не корень `*.github.io`)
 
 Игра полностью procedural — все спрайты генерируются кодом, внешних ассетов нет.
 
