@@ -269,6 +269,16 @@ export default class PreloadScene extends Phaser.Scene {
         gMeat.fillCircle(13, 7, 7);
         gMeat.fillTriangle(2, 9, 18, 9, 10, 19);
         gMeat.generateTexture('health_pickup', 20, 20);
+
+        // Реликвия (база; цвет тинтом)
+        const gRelic = this.make.graphics({ x: 0, y: 0, add: false });
+        gRelic.fillStyle(0xffffff, 1.0);
+        gRelic.fillCircle(12, 12, 11);
+        gRelic.lineStyle(2, 0xffffff, 1);
+        gRelic.strokeCircle(12, 12, 11);
+        gRelic.fillStyle(0xdddddd, 1);
+        gRelic.fillRect(9, 5, 6, 14);
+        gRelic.generateTexture('relic_pickup', 24, 24);
     }
 
     create() {

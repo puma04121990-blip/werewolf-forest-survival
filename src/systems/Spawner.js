@@ -21,6 +21,7 @@ export class Spawner {
     update(gameTimeMs, delta, enemyGroup) {
         if (!this.player || !this.player.active) return;
 
+        // delta may already be slowed by relic slow-time (from GameScene)
         this.spawnTimer += delta;
         this.difficultyTimer += delta;
 

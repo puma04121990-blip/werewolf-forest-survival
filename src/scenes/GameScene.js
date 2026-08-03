@@ -12,6 +12,7 @@ import { soundManager } from '../systems/SoundManager.js';
 import { BALANCE } from '../config.js';
 import { RunStatsTracker } from '../systems/RunStats.js';
 import { MetaProgress } from '../systems/MetaProgress.js';
+import { RelicSystem } from '../systems/RelicSystem.js';
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -56,6 +57,7 @@ export default class GameScene extends Phaser.Scene {
         this.upgradeSystem.resetRunState();
         this.hud = new Hud(this);
         this.levelUpPanel = new LevelUpPanel(this);
+        this.relicSystem = new RelicSystem(this);
 
         this.physics.add.overlap(this.playerBullets, this.enemies, this.handleBulletEnemyCollision, null, this);
         this.physics.add.overlap(this.enemyBullets, this.player, this.handleEnemyBulletPlayerCollision, null, this);
@@ -132,8 +134,13 @@ export default class GameScene extends Phaser.Scene {
         }
 
         this.player.update(time, delta);
-        this.spawner.update(this.gameTime, delta, this.enemies);
+
+        // Slow-mo only affects enemies / spawn pacing (player stays sharp)
+        const enemyScale = this.relicSystem ? this.relicSystem.getEnemyTimeScale() : 1;
+        this.enemyTimeScale = enemyScale;
+        this.spawner.update(this.gameTime, delta * enemyScale, this.enemies);
         this.weaponSystem.update(time, delta, this.enemies);
+        if (this.relicSystem) this.relicSystem.update(time, delta);
 
         this.hud.update(
             this.player,
@@ -148,6 +155,11 @@ export default class GameScene extends Phaser.Scene {
             this.weaponSystem,
             this.upgradeSystem
         );
+    }
+
+    /** Used by Enemy to slow movement during relic slow-time */
+    getEnemyTimeScale() {
+        return this.enemyTimeScale != null ? this.enemyTimeScale : 1;
     }
 
     /** Central damage pipeline: crit + lifesteal + damage tracking */
@@ -294,6 +306,11 @@ export default class GameScene extends Phaser.Scene {
             value = Math.floor(value * 1.15);
         }
 
+        // Relic ×2 XP
+        if (this.relicSystem && !flags.skipXpMul) {
+            value = Math.floor(value * this.relicSystem.getXpMultiplier());
+        }
+
         if (!flags.silent) {
             soundManager.playXp();
             this.showXpPickup(orb.x, orb.y, value, orb.tier);
@@ -400,6 +417,11 @@ export default class GameScene extends Phaser.Scene {
 
     handleEnemyBulletPlayerCollision(player, bullet) {
         if (!bullet.active || !player.active) return;
+        if (this.relicSystem && this.relicSystem.hasShield()) {
+            // Shield absorbs projectile
+            bullet.destroy();
+            return;
+        }
         player.takeDamage(bullet.damage, {
             kind: 'bullet',
             enemyType: bullet.enemyType || 'shooter'
@@ -411,6 +433,7 @@ export default class GameScene extends Phaser.Scene {
         if (!player.active || !enemy.active) return;
         // During dash: I-frames block damage; body strike is handled in Player.updateDashCombat
         if (player.isDashing || player.isInvulnerable) return;
+        if (this.relicSystem && this.relicSystem.hasShield()) return;
         player.takeDamage(enemy.damage, {
             kind: 'contact',
             enemyType: enemy.type || 'chaser'
@@ -546,6 +569,8 @@ export default class GameScene extends Phaser.Scene {
         this.combo += 1;
         this.comboTimer = BALANCE.xpComboWindow;
         if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+
+        if (this.relicSystem) this.relicSystem.maybeDropOnKill(enemy);
 
         // Combo moon orb — rare purple essence
         if (this.combo > 0 && this.combo % BALANCE.xpOrbComboMoonEvery === 0) {

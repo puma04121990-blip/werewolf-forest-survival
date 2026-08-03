@@ -94,6 +94,16 @@ export class Hud {
         this._lastPassiveKey = '';
         this._lastCurseKey = '';
 
+        // Active relic buffs (shield / xp2 / slow)
+        this.buffStrip = scene.add.text(scene.scale.width / 2, 58, '', {
+            fontSize: '14px',
+            fill: '#ddeeff',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 3,
+            align: 'center'
+        }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
+
         // Mute
         const initialIcon = soundManager.isMuted ? '🔇' : '🔊';
         this.muteBtn = scene.add.text(scene.scale.width - 48, 16, initialIcon, {
@@ -266,6 +276,7 @@ export class Hud {
         // Passive + curse stack counters
         this.updatePassiveStrip(upgradeSystem, w);
         this.updateCurseStrip(upgradeSystem, w);
+        this.updateBuffStrip();
 
         // Mobile dash button cooldown ring
         this.updateMobileDashButton(player);
@@ -460,6 +471,26 @@ export class Hud {
             duration: 120,
             ease: 'Back.easeOut'
         });
+    }
+
+    updateBuffStrip() {
+        if (!this.buffStrip) return;
+        const relics = this.scene.relicSystem;
+        if (!relics || !relics.getActiveBuffs) {
+            this.buffStrip.setText('');
+            return;
+        }
+        const buffs = relics.getActiveBuffs();
+        if (buffs.length === 0) {
+            this.buffStrip.setText('');
+            return;
+        }
+        const text = buffs.map(b => {
+            const sec = Math.ceil(b.remain / 1000);
+            return `${b.icon}${sec}s`;
+        }).join('  ');
+        this.buffStrip.setText(text);
+        this.buffStrip.setPosition(this.scene.scale.width / 2, 58);
     }
 
     updateCurseStrip(upgradeSystem, screenW) {

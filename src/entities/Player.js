@@ -423,6 +423,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
      */
     takeDamage(amount, source = null) {
         if (this.isInvulnerable || !this.active) return false;
+        // Arena relic shield
+        if (this.scene.relicSystem && this.scene.relicSystem.hasShield()) return false;
 
         if (source && this.scene.runStats) {
             this.scene.runStats.recordHit(source);

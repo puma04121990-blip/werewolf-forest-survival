@@ -85,6 +85,14 @@ export const BALANCE = {
     healBase: 28,
     healMaxHpPct: 0.08,
 
+    // Arena relics (power-ups)
+    relicSpawnIntervalMin: 18000,  // ms between spawn rolls
+    relicSpawnIntervalMax: 32000,
+    relicSpawnChance: 0.9,
+    relicMaxActive: 2,
+    relicLifetimeMs: 16000,
+    relicSlowFactor: 0.38,         // enemy time scale during slow
+
     // High score key
     storageKey: 'werewolf_forest_best',
 

@@ -183,6 +183,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             this.setVelocity(Math.cos(angle) * this.speed, Math.sin(angle) * this.speed);
         }
 
+        // Relic slow-time: enemies move slower
+        const scale = this.scene.getEnemyTimeScale ? this.scene.getEnemyTimeScale() : 1;
+        if (scale < 1 && this.body) {
+            this.setVelocity(this.body.velocity.x * scale, this.body.velocity.y * scale);
+        }
+
         this.drawHpBar();
         if (!this.isWindingUp) this.clearWarning();
     }
