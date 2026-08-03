@@ -34,6 +34,49 @@ export const EVOLUTIONS = {
         primaryWeapon: 'orbital',
         color: '#88eeff',
         dpsHint: 'DPS~ Орбита + Цепь · 🌕⚡'
+    },
+    howl_aura: {
+        id: 'howl_aura',
+        name: 'Рёв хищника',
+        icon: '🐺',
+        badge: 'ЭВОЛЮЦИЯ',
+        description: 'Рык Ур.5 + Аура Ур.5 → круговой рёв + ударная аура',
+        requires: {
+            weapons: { spread: 5, shield: 5 }
+        },
+        consumesWeapons: ['spread', 'shield'],
+        primaryWeapon: 'spread',
+        color: '#ffaa44',
+        dpsHint: 'DPS~ 360° рёв + Аура'
+    },
+    pack_runes: {
+        id: 'pack_runes',
+        name: 'Охотничья печать',
+        icon: '👻',
+        badge: 'ЭВОЛЮЦИЯ',
+        description: 'Стая Ур.5 + Руны Ур.5 → волки оставляют руны при укусе',
+        requires: {
+            weapons: { rockets: 5, mines: 5 }
+        },
+        consumesWeapons: ['rockets', 'mines'],
+        primaryWeapon: 'rockets',
+        color: '#88ffcc',
+        dpsHint: 'DPS~ Стая + мины'
+    },
+    iron_hide: {
+        id: 'iron_hide',
+        name: 'Железная шкура',
+        icon: '🦴',
+        badge: 'ЭВОЛЮЦИЯ',
+        description: 'Аура Ур.5 + Костяной панцирь → огромная аура и броня',
+        requires: {
+            weapons: { shield: 5 },
+            passives: { passive_armor: 1 }
+        },
+        consumesWeapons: ['shield'],
+        primaryWeapon: 'shield',
+        color: '#ccaa66',
+        dpsHint: 'DPS~ Танк-аура · 🦴'
     }
 };
 

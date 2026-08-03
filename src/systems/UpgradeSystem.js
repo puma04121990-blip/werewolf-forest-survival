@@ -1,6 +1,7 @@
 import { getWeaponUpgradeDpsInfo, getPassiveDpsHint } from './WeaponStats.js';
 import { getReadyEvolutionIds, evolutionToCard, EVOLUTIONS } from './Evolutions.js';
 import { getAvailableCurseCards, CURSES } from './Curses.js';
+import { COMBAT_SYNERGIES, getSynergyPairsForUi } from './Synergies.js';
 
 /** Weapon display names for synergy text */
 const WEAPON_META = {
@@ -26,41 +27,7 @@ const PASSIVE_META = {
     passive_dash: { name: 'Теневой рывок', icon: '💨' }
 };
 
-/**
- * Pairwise synergies: if player owns `withId` and card is `cardId` (or reverse),
- * show the synergy line. `label` is short UI text.
- */
-const SYNERGY_PAIRS = [
-    // Weapons + passives
-    { a: 'weapon_blaster', b: 'passive_damage', label: 'Жажда крови × Когти' },
-    { a: 'weapon_blaster', b: 'passive_crit', label: 'Крит-когти' },
-    { a: 'weapon_blaster', b: 'passive_firerate', label: 'Яростные когти' },
-    { a: 'weapon_blaster', b: 'passive_lifesteal', label: 'Кровавые когти' },
-    { a: 'weapon_spread', b: 'passive_damage', label: 'Рык силы' },
-    { a: 'weapon_spread', b: 'passive_firerate', label: 'Непрерывный рёв' },
-    { a: 'weapon_orbital', b: 'passive_magnet', label: 'Духи тянут эссенцию' },
-    { a: 'weapon_orbital', b: 'passive_damage', label: 'Лунный гнев' },
-    { a: 'weapon_shield', b: 'passive_armor', label: 'Панцирь + аура' },
-    { a: 'weapon_shield', b: 'passive_lifesteal', label: 'Аура вампира' },
-    { a: 'weapon_shield', b: 'passive_health', label: 'Танк-хищник' },
-    { a: 'weapon_lightning', b: 'passive_crit', label: 'Критический разряд' },
-    { a: 'weapon_lightning', b: 'passive_firerate', label: 'Цепная буря' },
-    { a: 'weapon_rockets', b: 'passive_damage', label: 'Стая-убийца' },
-    { a: 'weapon_rockets', b: 'passive_magnet', label: 'Охотничий нюх стаи' },
-    { a: 'weapon_mines', b: 'passive_damage', label: 'Смертельные руны' },
-    { a: 'weapon_mines', b: 'passive_armor', label: 'Контроль зоны' },
-    { a: 'passive_dash', b: 'weapon_shield', label: 'Рывок сквозь ауру' },
-    { a: 'passive_regen', b: 'passive_health', label: 'Регенерация шкуры' },
-    { a: 'passive_crit', b: 'passive_damage', label: 'Смертоносный билд' },
-    // Weapon combos
-    { a: 'weapon_blaster', b: 'weapon_shield', label: 'Когти + аура' },
-    { a: 'weapon_spread', b: 'weapon_shield', label: 'Рык + аура' },
-    { a: 'weapon_orbital', b: 'weapon_lightning', label: 'Луна + молния' },
-    { a: 'weapon_rockets', b: 'weapon_mines', label: 'Стая + руны' },
-    { a: 'weapon_spread', b: 'weapon_lightning', label: 'Рёв и гром' },
-    { a: 'weapon_orbital', b: 'weapon_shield', label: 'Двойная орбита' },
-    { a: 'weapon_blaster', b: 'weapon_rockets', label: 'Когти и стая' }
-];
+const SYNERGY_PAIRS = getSynergyPairsForUi();
 
 export class UpgradeSystem {
     constructor(scene, player, weaponSystem) {
@@ -73,12 +40,15 @@ export class UpgradeSystem {
         this.curseStacks = new Map();
         /** Option ids banned for the rest of the run */
         this.bannedIds = new Set();
+        /** Combat synergies already applied this run */
+        this.activeSynergies = new Set();
     }
 
     resetRunState() {
         this.passiveStacks.clear();
         this.curseStacks.clear();
         this.bannedIds.clear();
+        this.activeSynergies.clear();
     }
 
     getWeaponDisplayName(key) {
@@ -88,9 +58,49 @@ export class UpgradeSystem {
     isOwned(optionId) {
         if (optionId.startsWith('weapon_')) {
             const key = optionId.replace('weapon_', '');
-            return this.weaponSystem.getWeaponLevel(key) > 0;
+            // Active level, or still "owned" as evolution primary
+            if (this.weaponSystem.getWeaponLevel(key) > 0) return true;
+            const evo = this.weaponSystem.getEvolutionOwningWeapon(key);
+            if (evo && EVOLUTIONS[evo]?.primaryWeapon === key) return true;
+            return false;
         }
         return (this.passiveStacks.get(optionId) || 0) > 0;
+    }
+
+    /**
+     * Apply real combat bonuses when both halves of a pair are owned.
+     * Each synergy applies once per run.
+     */
+    refreshCombatSynergies() {
+        let newly = 0;
+        COMBAT_SYNERGIES.forEach(syn => {
+            if (this.activeSynergies.has(syn.id)) return;
+            if (!this.isOwned(syn.a) || !this.isOwned(syn.b)) return;
+
+            this.activeSynergies.add(syn.id);
+            if (syn.apply) {
+                syn.apply(this.player, {
+                    weaponSystem: this.weaponSystem,
+                    upgradeSystem: this
+                });
+            }
+            newly++;
+            if (this.scene.hud?.showToast && syn.toast) {
+                // slight delay so not stacking toasts with level-up
+                this.scene.time.delayedCall(200 + newly * 180, () => {
+                    if (this.scene.hud?.showToast) {
+                        this.scene.hud.showToast(syn.toast, '#88ffcc');
+                    }
+                });
+            }
+        });
+        return newly;
+    }
+
+    getActiveSynergyLabels() {
+        return COMBAT_SYNERGIES
+            .filter(s => this.activeSynergies.has(s.id))
+            .map(s => s.label);
     }
 
     /**
@@ -513,7 +523,11 @@ export class UpgradeSystem {
             line: c.short
         }));
 
-        return { weapons, passives, curses };
+        const synergies = this.getActiveSynergyLabels().map(label => ({
+            line: `🔗 ${label}`
+        }));
+
+        return { weapons, passives, curses, synergies };
     }
 
     applyUpgrade(option) {
@@ -538,6 +552,8 @@ export class UpgradeSystem {
                 }
             }
         }
+        // Real combat synergy bonuses (once per pair per run)
+        this.refreshCombatSynergies();
     }
 
     maybeToastEvolutionReady() {

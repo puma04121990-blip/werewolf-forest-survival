@@ -1,4 +1,5 @@
 import { soundManager } from '../systems/SoundManager.js';
+import { Mine } from './Mine.js';
 
 export class Rocket extends Phaser.Physics.Arcade.Sprite {
     constructor(scene, x, y) {
@@ -104,6 +105,14 @@ export class Rocket extends Phaser.Physics.Arcade.Sprite {
                     }
                 }
             });
+        }
+
+        // Evolution pack_runes: leave a rune on impact
+        if (this.dropMineOnExplode && this.scene) {
+            const mine = new Mine(this.scene, this.x, this.y);
+            if (this.scene.mines) this.scene.mines.add(mine);
+            mine.weaponKey = 'mines';
+            mine.arm(this.x, this.y, Math.max(40, this.damage * 0.7), 45, 85);
         }
 
         this.destroy();

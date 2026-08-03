@@ -59,7 +59,7 @@ export default class PauseScene extends Phaser.Scene {
     }
 
     drawLoadout(loadout, player, width, height, isPortrait, titleY) {
-        const { weapons, passives, curses } = loadout;
+        const { weapons, passives, curses, synergies } = loadout;
         const panelTop = titleY + (isPortrait ? 58 : 70);
         const panelBottom = isPortrait ? height - 100 : height - 110;
         const panelH = panelBottom - panelTop;
@@ -89,6 +89,10 @@ export default class PauseScene extends Phaser.Scene {
                 y += 8;
                 y = this.drawSection(panelX, y, panelW - 28, 'ПРОКЛЯТИЯ', curses, 0xff4466, true);
             }
+            if (synergies && synergies.length) {
+                y += 8;
+                y = this.drawSection(panelX, y, panelW - 28, 'СИНЕРГИИ', synergies.slice(0, 6), 0x88ffcc, true);
+            }
             y += 10;
             this.drawPlayerStats(panelX, Math.min(y, panelBottom - 36), player, true);
         } else {
@@ -96,7 +100,10 @@ export default class PauseScene extends Phaser.Scene {
             const leftX = panelX - panelW / 4 - 4;
             const rightX = panelX + panelW / 4 + 4;
             const y0 = panelTop + 40;
-            this.drawSection(leftX, y0, colW, 'ОРУЖИЕ', weapons, 0x66ffcc, false);
+            let ly = this.drawSection(leftX, y0, colW, 'ОРУЖИЕ', weapons, 0x66ffcc, false);
+            if (synergies && synergies.length) {
+                this.drawSection(leftX, ly + 6, colW, 'СИНЕРГИИ', synergies.slice(0, 5), 0x88ffcc, false);
+            }
             let ry = this.drawSection(rightX, y0, colW, 'ПАССИВКИ', passives, 0xffdd88, false);
             if (curses && curses.length) {
                 this.drawSection(rightX, ry + 8, colW, 'ПРОКЛЯТИЯ', curses, 0xff4466, false);

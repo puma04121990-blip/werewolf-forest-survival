@@ -66,6 +66,8 @@ export class WeaponSystem {
         if (!evo || this.evolutions.has(evoId)) return false;
 
         this.evolutions.add(evoId);
+        const primary = evo.primaryWeapon;
+
         (evo.consumesWeapons || []).forEach(key => {
             this.consumedBy[key] = evoId;
             if (this.weapons[key]) {
@@ -74,10 +76,19 @@ export class WeaponSystem {
             }
         });
 
-        // Moon storm: lightning fully absorbed into orbital form
-        if (evoId === 'moon_storm' && this.weapons.lightning) {
-            this.weapons.lightning.level = 0;
-            this.weapons.lightning.merged = true;
+        // Non-primary consumed weapons are absorbed (stop firing as base)
+        (evo.consumesWeapons || []).forEach(key => {
+            if (key !== primary && this.weapons[key]) {
+                this.weapons[key].level = 0;
+                this.weapons[key].merged = true;
+            }
+        });
+
+        // Instant combat bonuses on evolve
+        if (evoId === 'iron_hide' && this.player) {
+            this.player.armor = Math.min(0.55, (this.player.armor || 0) + 0.12);
+            this.player.maxHealth += 40;
+            this.player.heal(40);
         }
 
         if (this.scene.hud?.showToast) {
@@ -194,6 +205,11 @@ export class WeaponSystem {
         const w = this.weapons.spread;
         if (w.level <= 0) return;
 
+        if (this.hasEvolution('howl_aura')) {
+            this.updateHowlAura(time, enemies);
+            return;
+        }
+
         const effectiveCooldown = (w.cooldown - (w.level - 1) * 40) / this.player.fireRateMultiplier;
         if (time - w.lastFired > effectiveCooldown) {
             const target = this.getClosestEnemy(enemies);
@@ -215,6 +231,49 @@ export class WeaponSystem {
                 soundManager.playLaser();
             }
         }
+    }
+
+    /** Evolution: circular howl + knockback pulse */
+    updateHowlAura(time, enemies) {
+        const w = this.weapons.spread;
+        const cd = 320 / this.player.fireRateMultiplier;
+        if (time - w.lastFired <= cd) return;
+
+        const hasEnemy = enemies.getChildren().some(e => e.active);
+        if (!hasEnemy) return;
+
+        w.lastFired = time;
+        const count = 14;
+        const dmg = 20;
+        for (let i = 0; i < count; i++) {
+            const angle = (i * Math.PI * 2) / count + time * 0.001;
+            this.scene.firePlayerBullet(this.player.x, this.player.y, angle, 480, dmg, 'spread');
+        }
+
+        // Shockwave knockback aura
+        const radius = 130;
+        enemies.getChildren().forEach(enemy => {
+            if (!enemy.active) return;
+            const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
+            if (dist < radius) {
+                if (this.scene.dealDamageToEnemy) {
+                    this.scene.dealDamageToEnemy(enemy, 12, { source: 'shield' });
+                }
+                const a = Phaser.Math.Angle.Between(this.player.x, this.player.y, enemy.x, enemy.y);
+                enemy.x += Math.cos(a) * 22;
+                enemy.y += Math.sin(a) * 22;
+            }
+        });
+
+        const ring = this.scene.add.circle(this.player.x, this.player.y, 20, 0xffaa44, 0.35).setDepth(8);
+        this.scene.tweens.add({
+            targets: ring,
+            radius: 140,
+            alpha: 0,
+            duration: 280,
+            onComplete: () => ring.destroy()
+        });
+        soundManager.playLaser();
     }
 
     updateOrbital(time, delta, enemies) {
@@ -337,22 +396,29 @@ export class WeaponSystem {
 
     updateShield(time, enemies) {
         const w = this.weapons.shield;
+        // Absorbed into howl_aura
+        if (this.hasEvolution('howl_aura') || w.merged) return;
         if (w.level <= 0) return;
 
         if (!w.auraGraphics) {
             w.auraGraphics = this.scene.add.graphics();
         }
 
-        const radius = w.radius + (w.level - 1) * 15;
-        const dmg = w.damage + (w.level - 1) * 6;
+        const iron = this.hasEvolution('iron_hide');
+        const radius = w.radius + (w.level - 1) * 15 + (iron ? 55 : 0);
+        const dmg = (w.damage + (w.level - 1) * 6) * (iron ? 1.35 : 1);
 
         w.auraGraphics.clear();
-        w.auraGraphics.lineStyle(3, 0xff2244, 0.65);
-        w.auraGraphics.fillStyle(0xff0033, 0.10);
+        w.auraGraphics.lineStyle(3, iron ? 0xccaa66 : 0xff2244, 0.65);
+        w.auraGraphics.fillStyle(iron ? 0xaa8844 : 0xff0033, iron ? 0.14 : 0.10);
         w.auraGraphics.strokeCircle(this.player.x, this.player.y, radius);
         w.auraGraphics.fillCircle(this.player.x, this.player.y, radius);
+        if (iron) {
+            w.auraGraphics.lineStyle(2, 0xffeebb, 0.35);
+            w.auraGraphics.strokeCircle(this.player.x, this.player.y, radius + 10);
+        }
 
-        const tickInterval = Math.max(160, 320 - (w.level - 1) * 40);
+        const tickInterval = Math.max(120, (iron ? 200 : 320) - (w.level - 1) * 40);
         if (time - w.lastTick > tickInterval) {
             w.lastTick = time;
             enemies.getChildren().forEach(enemy => {
@@ -363,10 +429,11 @@ export class WeaponSystem {
                         enemy.takeDamage(dmg);
                     }
 
-                    if (w.level >= 3) {
+                    if (w.level >= 3 || iron) {
                         const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, enemy.x, enemy.y);
-                        enemy.x += Math.cos(angle) * (18 + w.level * 2);
-                        enemy.y += Math.sin(angle) * (18 + w.level * 2);
+                        const push = iron ? 28 : (18 + w.level * 2);
+                        enemy.x += Math.cos(angle) * push;
+                        enemy.y += Math.sin(angle) * push;
                     }
                 }
             });
@@ -449,20 +516,23 @@ export class WeaponSystem {
         const w = this.weapons.rockets;
         if (w.level <= 0) return;
 
-        const cooldown = (w.cooldown - (w.level - 1) * 120) / this.player.fireRateMultiplier;
+        const packRunes = this.hasEvolution('pack_runes');
+        const cooldown = (w.cooldown - (w.level - 1) * 120) / this.player.fireRateMultiplier / (packRunes ? 1.15 : 1);
         if (time - w.lastFired > cooldown) {
             const target = this.getClosestEnemy(enemies);
             if (target) {
                 w.lastFired = time;
-                const count = w.level >= 5 ? 5 : (w.level >= 3 ? 3 : (w.level >= 2 ? 2 : 1));
-                const dmg = w.damage + (w.level - 1) * 10;
-                const splash = 80 + (w.level - 1) * 15;
+                let count = w.level >= 5 ? 5 : (w.level >= 3 ? 3 : (w.level >= 2 ? 2 : 1));
+                if (packRunes) count = Math.max(count, 6);
+                const dmg = (w.damage + (w.level - 1) * 10) * (packRunes ? 1.15 : 1);
+                const splash = 80 + (w.level - 1) * 15 + (packRunes ? 20 : 0);
 
                 for (let i = 0; i < count; i++) {
-                    const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y) + (i - (count - 1) / 2) * 0.3;
+                    const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y) + (i - (count - 1) / 2) * 0.28;
                     const rocket = new Rocket(this.scene, this.player.x, this.player.y);
                     if (this.scene.rockets) this.scene.rockets.add(rocket);
                     rocket.weaponKey = 'rockets';
+                    rocket.dropMineOnExplode = packRunes;
                     rocket.launch(this.player.x, this.player.y, angle, dmg, splash);
                 }
                 soundManager.playLaser();
@@ -472,6 +542,8 @@ export class WeaponSystem {
 
     updateMines(time) {
         const w = this.weapons.mines;
+        // Absorbed into pack_runes
+        if (this.hasEvolution('pack_runes') || w.merged) return;
         if (w.level <= 0) return;
 
         const cooldown = (w.cooldown - (w.level - 1) * 150) / this.player.fireRateMultiplier;
