@@ -1,5 +1,6 @@
 import { soundManager } from '../systems/SoundManager.js';
 import { isPortraitMode } from '../utils/orientation.js';
+import { BALANCE } from '../config.js';
 
 export default class GameOverScene extends Phaser.Scene {
     constructor() {
@@ -7,7 +8,7 @@ export default class GameOverScene extends Phaser.Scene {
     }
 
     init(data) {
-        this.finalStats = data || { kills: 0, time: 0, level: 1 };
+        this.finalStats = data || { kills: 0, time: 0, level: 1, maxCombo: 0, wave: 1 };
     }
 
     create() {
@@ -17,11 +18,15 @@ export default class GameOverScene extends Phaser.Scene {
 
         this.add.rectangle(width / 2, height / 2, width, height, 0x0b0c10);
 
-        const titleY = isPortrait ? height * 0.18 : 120;
-        const titleSize = isPortrait ? '38px' : '56px';
+        // subtle grid
+        const grid = this.add.graphics();
+        grid.lineStyle(1, 0x1f3823, 0.2);
+        for (let x = 0; x < width; x += 40) grid.lineBetween(x, 0, x, height);
+        for (let y = 0; y < height; y += 40) grid.lineBetween(0, y, width, y);
 
+        const titleY = isPortrait ? height * 0.14 : 100;
         this.add.text(width / 2, titleY, 'ИГРА ОКОНЧЕНА', {
-            fontSize: titleSize,
+            fontSize: isPortrait ? '36px' : '52px',
             fill: '#ff0055',
             fontStyle: 'bold',
             shadow: { blur: 20, color: '#ff0055', fill: true }
@@ -30,34 +35,74 @@ export default class GameOverScene extends Phaser.Scene {
         const mins = Math.floor(this.finalStats.time / 60).toString().padStart(2, '0');
         const secs = (this.finalStats.time % 60).toString().padStart(2, '0');
 
-        const statsText = [
-            `Время выживания: ${mins}:${secs}`,
-            `Уничтожено врагов: ${this.finalStats.kills}`,
-            `Итоговый уровень: ${this.finalStats.level}`
-        ].join('\n\n');
+        const stats = [
+            { label: 'Время', value: `${mins}:${secs}` },
+            { label: 'Убито', value: `${this.finalStats.kills}` },
+            { label: 'Уровень', value: `${this.finalStats.level}` },
+            { label: 'Волна', value: `${this.finalStats.wave || 1}` },
+            { label: 'Макс. комбо', value: `×${this.finalStats.maxCombo || 0}` }
+        ];
 
-        this.add.text(width / 2, height / 2 - (isPortrait ? 10 : 20), statsText, {
-            fontSize: isPortrait ? '18px' : '22px',
-            fill: '#ffffff',
+        const startStatsY = isPortrait ? height * 0.28 : height * 0.32;
+        stats.forEach((s, i) => {
+            const y = startStatsY + i * (isPortrait ? 32 : 36);
+            this.add.text(width / 2 - 100, y, s.label, {
+                fontSize: isPortrait ? '16px' : '18px',
+                fill: '#88aa99'
+            }).setOrigin(0, 0.5);
+            this.add.text(width / 2 + 100, y, s.value, {
+                fontSize: isPortrait ? '18px' : '20px',
+                fill: '#ffffff',
+                fontStyle: 'bold'
+            }).setOrigin(1, 0.5);
+        });
+
+        // Best run
+        let bestLine = 'Рекорд: —';
+        try {
+            const best = JSON.parse(localStorage.getItem(BALANCE.storageKey) || 'null');
+            if (best) {
+                const bm = Math.floor(best.time / 60).toString().padStart(2, '0');
+                const bs = (best.time % 60).toString().padStart(2, '0');
+                bestLine = `Рекорд: ${bm}:${bs} · ${best.kills} убийств · ур. ${best.level}`;
+                const isNew = this.finalStats.time >= best.time && this.finalStats.kills >= best.kills;
+                if (isNew) bestLine = '★ НОВЫЙ РЕКОРД! · ' + bestLine.replace('Рекорд: ', '');
+            }
+        } catch (e) { /* ignore */ }
+
+        this.add.text(width / 2, isPortrait ? height * 0.58 : height * 0.62, bestLine, {
+            fontSize: isPortrait ? '13px' : '15px',
+            fill: '#ffe600',
             align: 'center',
-            lineSpacing: isPortrait ? 8 : 10
+            wordWrap: { width: width * 0.85 }
         }).setOrigin(0.5);
 
-        const btnY = isPortrait ? height - 100 : height - 120;
-        const btnW = isPortrait ? Math.min(260, width * 0.65) : 260;
-        const btnBg = this.add.rectangle(width / 2, btnY, btnW, 52, 0x00ffcc, 0.2);
-        btnBg.setStrokeStyle(2, 0x00ffcc);
+        const btnY = isPortrait ? height - 120 : height - 130;
+        this.makeButton(width / 2, btnY, isPortrait ? Math.min(260, width * 0.7) : 260, 'ИГРАТЬ СНОВА', 0x00ffcc, () => {
+            soundManager.playLaser();
+            this.scene.start('GameScene');
+        });
+
+        this.makeButton(width / 2, btnY + 58, isPortrait ? Math.min(220, width * 0.6) : 220, 'В МЕНЮ', 0x88aa99, () => {
+            soundManager.playButtonClick();
+            this.scene.start('MenuScene');
+        }, true);
+    }
+
+    makeButton(x, y, w, label, color, onClick, small = false) {
+        const h = small ? 44 : 52;
+        const btnBg = this.add.rectangle(x, y, w, h, color, 0.18);
+        btnBg.setStrokeStyle(2, color);
         btnBg.setInteractive({ useHandCursor: true });
 
-        this.add.text(width / 2, btnY, 'ИГРАТЬ СНОВА', {
-            fontSize: isPortrait ? '18px' : '22px',
+        const txt = this.add.text(x, y, label, {
+            fontSize: small ? '16px' : '20px',
             fill: '#ffffff',
             fontStyle: 'bold'
         }).setOrigin(0.5);
 
-        btnBg.on('pointerdown', () => {
-            soundManager.playLaser();
-            this.scene.start('GameScene');
-        });
+        btnBg.on('pointerover', () => btnBg.setFillStyle(color, 0.4));
+        btnBg.on('pointerout', () => btnBg.setFillStyle(color, 0.18));
+        btnBg.on('pointerdown', onClick);
     }
 }

@@ -1,4 +1,5 @@
 import { soundManager } from '../systems/SoundManager.js';
+import { BALANCE } from '../config.js';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
     constructor(scene, x, y) {
@@ -10,26 +11,28 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.setCollideWorldBounds(true);
         this.setCircle(16);
 
-        // Rebalanced Stats
-        this.maxHealth = 150;
-        this.health = 150;
-        this.speed = 250;
-        this.magnetRadius = 220;
+        this.maxHealth = BALANCE.playerMaxHp;
+        this.health = BALANCE.playerMaxHp;
+        this.speed = BALANCE.playerSpeed;
+        this.magnetRadius = BALANCE.playerMagnet;
         this.damageMultiplier = 1.0;
         this.fireRateMultiplier = 1.0;
+        this.critChance = 0.05;
+        this.critMultiplier = 1.75;
+        this.lifesteal = 0;
+        this.armor = 0; // damage reduction 0–0.45
+        this.regenPerSec = BALANCE.baseRegenPerSec;
 
-        // Dash ability
         this.canDash = true;
         this.isDashing = false;
-        this.dashCooldown = 2500; // ms
-        this.dashDuration = 220; // ms
+        this.dashCooldown = BALANCE.dashCooldown;
+        this.dashDuration = BALANCE.dashDuration;
+        this.dashCooldownRemaining = 0;
         this.isInvulnerable = false;
 
-        // Visual effects & Passive HP regen
         this.trailTimer = 0;
         this.regenTimer = 0;
 
-        // Controls setup
         this.cursors = scene.input.keyboard.createCursorKeys();
         this.wasd = scene.input.keyboard.addKeys({
             up: Phaser.Input.Keyboard.KeyCodes.W,
@@ -43,6 +46,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     update(time, delta) {
         if (!this.active) return;
 
+        if (this.dashCooldownRemaining > 0) {
+            this.dashCooldownRemaining = Math.max(0, this.dashCooldownRemaining - delta);
+            if (this.dashCooldownRemaining <= 0) {
+                this.canDash = true;
+            }
+        }
+
         this.handleMovement(time);
         this.updateTrail(delta);
         this.handleRegen(delta);
@@ -54,13 +64,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         let moveX = 0;
         let moveY = 0;
 
-        // Keyboard input
         if (this.cursors.left.isDown || this.wasd.left.isDown) moveX -= 1;
         if (this.cursors.right.isDown || this.wasd.right.isDown) moveX += 1;
         if (this.cursors.up.isDown || this.wasd.up.isDown) moveY -= 1;
         if (this.cursors.down.isDown || this.wasd.down.isDown) moveY += 1;
 
-        // Pointer / Touch Controls (оптимизировано под landscape mobile)
         const pointer = this.scene.input.activePointer;
         if (pointer.isDown && pointer.getDuration() > 40) {
             const angle = Phaser.Math.Angle.Between(this.x, this.y, pointer.worldX, pointer.worldY);
@@ -71,12 +79,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             }
         }
 
-        // Второй палец = рывок (удобно в landscape)
         if (this.scene.input.pointer2 && this.scene.input.pointer2.isDown && this.canDash && (moveX !== 0 || moveY !== 0)) {
             this.dash(moveX, moveY);
         }
 
-        // Normalize vector
         if (moveX !== 0 && moveY !== 0) {
             moveX *= 0.7071;
             moveY *= 0.7071;
@@ -84,12 +90,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
         this.setVelocity(moveX * this.speed, moveY * this.speed);
 
-        // Rotate sprite towards movement
         if (moveX !== 0 || moveY !== 0) {
             this.rotation = Math.atan2(moveY, moveX) + Math.PI / 2;
         }
 
-        // Dash trigger (клавиатура)
         if (Phaser.Input.Keyboard.JustDown(this.wasd.space) && this.canDash && (moveX !== 0 || moveY !== 0)) {
             this.dash(moveX, moveY);
         }
@@ -99,31 +103,48 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.canDash = false;
         this.isDashing = true;
         this.isInvulnerable = true;
+        this.dashCooldownRemaining = this.dashCooldown;
 
         soundManager.playDash();
 
-        const dashSpeed = this.speed * 3.2;
+        const dashSpeed = this.speed * BALANCE.dashSpeedMul;
         this.setVelocity(dirX * dashSpeed, dirY * dashSpeed);
+        this.setAlpha(0.55);
 
-        this.setAlpha(0.6);
+        // Brief trail burst
+        for (let i = 0; i < 4; i++) {
+            this.scene.time.delayedCall(i * 30, () => {
+                if (!this.active) return;
+                const clone = this.scene.add.image(this.x, this.y, 'player');
+                clone.setRotation(this.rotation).setAlpha(0.35).setTint(0x88ffaa);
+                this.scene.tweens.add({
+                    targets: clone,
+                    alpha: 0,
+                    scale: 0.7,
+                    duration: 180,
+                    onComplete: () => clone.destroy()
+                });
+            });
+        }
 
         this.scene.time.delayedCall(this.dashDuration, () => {
             this.isDashing = false;
             this.isInvulnerable = false;
             this.setAlpha(1.0);
         });
+    }
 
-        this.scene.time.delayedCall(this.dashCooldown, () => {
-            this.canDash = true;
-        });
+    getDashCooldownRatio() {
+        if (this.canDash) return 1;
+        return 1 - Phaser.Math.Clamp(this.dashCooldownRemaining / this.dashCooldown, 0, 1);
     }
 
     handleRegen(delta) {
         this.regenTimer += delta;
         if (this.regenTimer >= 1000) {
             this.regenTimer = 0;
-            if (this.health < this.maxHealth) {
-                this.health = Math.min(this.maxHealth, this.health + 1); // 1 HP per second regen
+            if (this.health < this.maxHealth && this.regenPerSec > 0) {
+                this.health = Math.min(this.maxHealth, this.health + this.regenPerSec);
             }
         }
     }
@@ -131,11 +152,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     updateTrail(delta) {
         if (this.isDashing || this.body.speed > 50) {
             this.trailTimer += delta;
-            if (this.trailTimer > 50) {
+            if (this.trailTimer > 55) {
                 this.trailTimer = 0;
                 const clone = this.scene.add.image(this.x, this.y, 'player');
                 clone.setRotation(this.rotation);
-                clone.setAlpha(0.3);
+                clone.setAlpha(0.28);
                 clone.setTint(0x00ffcc);
                 this.scene.tweens.add({
                     targets: clone,
@@ -149,21 +170,21 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     takeDamage(amount) {
-        if (this.isInvulnerable || !this.active) return;
+        if (this.isInvulnerable || !this.active) return false;
 
-        this.health -= amount;
+        const reduced = amount * (1 - Phaser.Math.Clamp(this.armor, 0, 0.45));
+        this.health -= reduced;
         soundManager.playHit();
-        this.scene.cameras.main.shake(100, 0.01);
+        this.scene.cameras.main.shake(90, 0.008);
 
-        // Grant 600ms Invincibility Frames (I-Frames)
         this.isInvulnerable = true;
         this.setTint(0xff0000);
 
-        this.scene.time.delayedCall(150, () => {
+        this.scene.time.delayedCall(140, () => {
             if (this.active) this.clearTint();
         });
 
-        this.scene.time.delayedCall(600, () => {
+        this.scene.time.delayedCall(BALANCE.invulnAfterHit, () => {
             if (this.active) this.isInvulnerable = false;
         });
 
@@ -171,6 +192,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             this.health = 0;
             this.die();
         }
+        return true;
     }
 
     die() {
@@ -181,6 +203,21 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     heal(amount) {
+        const before = this.health;
         this.health = Math.min(this.maxHealth, this.health + amount);
+        return this.health - before;
+    }
+
+    /** Roll crit and return { damage, isCrit } */
+    rollDamage(baseDamage) {
+        const isCrit = Math.random() < this.critChance;
+        const damage = baseDamage * this.damageMultiplier * (isCrit ? this.critMultiplier : 1);
+        return { damage, isCrit };
+    }
+
+    applyLifesteal(dealtDamage) {
+        if (this.lifesteal <= 0 || !this.active) return;
+        const heal = dealtDamage * this.lifesteal;
+        if (heal >= 0.5) this.heal(heal);
     }
 }

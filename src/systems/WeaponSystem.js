@@ -58,7 +58,8 @@ export class WeaponSystem {
             if (target) {
                 w.lastFired = time;
                 const baseAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y);
-                const dmg = (w.damage + (w.level - 1) * 6) * this.player.damageMultiplier;
+                // Pure base damage — crit/multiplier applied on hit
+                const dmg = w.damage + (w.level - 1) * 6;
 
                 if (w.level >= 3) {
                     this.scene.firePlayerBullet(this.player.x - 8, this.player.y, baseAngle, 650, dmg);
@@ -90,7 +91,7 @@ export class WeaponSystem {
                 if (w.level >= 5) projectileCount = 8;
 
                 const spreadAngle = w.level >= 5 ? (Math.PI * 2) / projectileCount : 0.22;
-                const dmg = (w.damage + (w.level - 1) * 5) * this.player.damageMultiplier;
+                const dmg = w.damage + (w.level - 1) * 5;
 
                 for (let i = 0; i < projectileCount; i++) {
                     const angle = w.level >= 5 ? i * spreadAngle : baseAngle + (i - (projectileCount - 1) / 2) * spreadAngle;
@@ -121,7 +122,8 @@ export class WeaponSystem {
         const baseAngle = time * speed * 0.0022;
         const pulse = 1.0 + Math.sin(time * 0.012) * 0.18;
         const radius = w.radius + (w.level - 1) * 12;
-        const dmg = (w.damage + (w.level - 1) * 8) * this.player.damageMultiplier;
+        // Per-frame tick (~60fps): ~0.04 of hit ≈ original feel, scaled by pipeline
+        const dmg = (w.damage + (w.level - 1) * 8) * 0.04;
 
         // Мягкое вращающееся кольцо-орбита
         w.graphics.lineStyle(1.5, 0x00ffcc, 0.25 + Math.sin(time * 0.005) * 0.1);
@@ -181,10 +183,13 @@ export class WeaponSystem {
             w.graphics.lineStyle(1, 0x00ffff, 0.35);
             w.graphics.strokeCircle(targetX, targetY, coreSize + 9);
 
-            // Урон
             enemies.getChildren().forEach(enemy => {
-                if (enemy.active && Phaser.Math.Distance.Between(targetX, targetY, enemy.x, enemy.y) < 30) {
-                    enemy.takeDamage(dmg * 0.05);
+                if (enemy.active && Phaser.Math.Distance.Between(targetX, targetY, enemy.x, enemy.y) < 32) {
+                    if (this.scene.dealDamageToEnemy) {
+                        this.scene.dealDamageToEnemy(enemy, dmg, { silent: false });
+                    } else {
+                        enemy.takeDamage(dmg);
+                    }
                 }
             });
         });
@@ -214,25 +219,29 @@ export class WeaponSystem {
         }
 
         const radius = w.radius + (w.level - 1) * 15;
-        const dmg = (w.damage + (w.level - 1) * 6) * this.player.damageMultiplier;
+        const dmg = w.damage + (w.level - 1) * 6;
 
         w.auraGraphics.clear();
-        w.auraGraphics.lineStyle(3, 0x00ffcc, 0.7);
-        w.auraGraphics.fillStyle(0x00ffcc, 0.12);
+        w.auraGraphics.lineStyle(3, 0xff2244, 0.65);
+        w.auraGraphics.fillStyle(0xff0033, 0.10);
         w.auraGraphics.strokeCircle(this.player.x, this.player.y, radius);
         w.auraGraphics.fillCircle(this.player.x, this.player.y, radius);
 
-        const tickInterval = Math.max(180, 350 - (w.level - 1) * 40);
+        const tickInterval = Math.max(160, 320 - (w.level - 1) * 40);
         if (time - w.lastTick > tickInterval) {
             w.lastTick = time;
             enemies.getChildren().forEach(enemy => {
                 if (enemy.active && Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y) < radius) {
-                    enemy.takeDamage(dmg);
+                    if (this.scene.dealDamageToEnemy) {
+                        this.scene.dealDamageToEnemy(enemy, dmg);
+                    } else {
+                        enemy.takeDamage(dmg);
+                    }
 
                     if (w.level >= 3) {
                         const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, enemy.x, enemy.y);
-                        enemy.x += Math.cos(angle) * 18;
-                        enemy.y += Math.sin(angle) * 18;
+                        enemy.x += Math.cos(angle) * (18 + w.level * 2);
+                        enemy.y += Math.sin(angle) * (18 + w.level * 2);
                     }
                 }
             });
@@ -249,7 +258,7 @@ export class WeaponSystem {
             if (target) {
                 w.lastFired = time;
                 const bounces = w.bounces + (w.level - 1) * 2;
-                const dmg = (w.damage + (w.level - 1) * 12) * this.player.damageMultiplier;
+                const dmg = w.damage + (w.level - 1) * 12;
 
                 this.castChainLightning(target, enemies, bounces, dmg);
                 if (w.level >= 5) {
@@ -273,10 +282,14 @@ export class WeaponSystem {
             if (!current || !current.active) break;
 
             hitSet.add(current);
-            current.takeDamage(damage);
+            if (this.scene.dealDamageToEnemy) {
+                this.scene.dealDamageToEnemy(current, damage);
+            } else {
+                current.takeDamage(damage);
+            }
 
             const line = this.scene.add.graphics();
-            line.lineStyle(3, 0xffff00, 1.0);
+            line.lineStyle(3, 0xaaddff, 1.0);
             line.lineBetween(startX, startY, current.x, current.y);
             this.scene.tweens.add({
                 targets: line,
@@ -314,7 +327,7 @@ export class WeaponSystem {
             if (target) {
                 w.lastFired = time;
                 const count = w.level >= 5 ? 5 : (w.level >= 3 ? 3 : (w.level >= 2 ? 2 : 1));
-                const dmg = (w.damage + (w.level - 1) * 10);
+                const dmg = w.damage + (w.level - 1) * 10;
                 const splash = 80 + (w.level - 1) * 15;
 
                 for (let i = 0; i < count; i++) {

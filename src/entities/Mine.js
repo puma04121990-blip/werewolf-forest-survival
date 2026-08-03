@@ -87,11 +87,14 @@ export class Mine extends Phaser.Physics.Arcade.Sprite {
             onComplete: () => wave.destroy()
         });
 
-        // Area Damage to surrounding enemies
         if (this.scene && this.scene.enemies) {
             this.scene.enemies.getChildren().forEach(enemy => {
                 if (enemy.active && Phaser.Math.Distance.Between(this.x, this.y, enemy.x, enemy.y) <= this.splashRadius) {
-                    enemy.takeDamage(this.damage * this.scene.player.damageMultiplier);
+                    if (this.scene.dealDamageToEnemy) {
+                        this.scene.dealDamageToEnemy(enemy, this.damage, { forceNumber: true });
+                    } else {
+                        enemy.takeDamage(this.damage);
+                    }
                 }
             });
         }

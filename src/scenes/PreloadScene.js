@@ -146,6 +146,23 @@ export default class PreloadScene extends Phaser.Scene {
         gRivalWolf.generateTexture('enemy_tank', 36, 36);
 
         // ==========================================
+        // 5b. ЭЛИТА: СЕРЕБРЯНЫЙ ОХОТНИК (Elite)
+        // ==========================================
+        const gElite = this.make.graphics({ x: 0, y: 0, add: false });
+        gElite.fillStyle(0x334455, 1.0);
+        gElite.fillRect(6, 12, 28, 24);
+        gElite.fillStyle(0xc0d0e0, 1.0); // silver armor
+        gElite.fillRect(10, 14, 20, 18);
+        gElite.fillStyle(0x1a2030, 1.0);
+        gElite.fillCircle(20, 10, 8);
+        gElite.fillStyle(0x66ffcc, 1.0);
+        gElite.fillCircle(17, 9, 2);
+        gElite.fillCircle(23, 9, 2);
+        gElite.fillStyle(0xaabbcc, 1.0);
+        gElite.fillRect(30, 4, 4, 28);
+        gElite.generateTexture('enemy_elite', 36, 36);
+
+        // ==========================================
         // 6. БОСС: ВЕЛИКИЙ ИНКВИЗИЦИОННЫЙ ЛОРД (Boss)
         // ==========================================
         const gBoss = this.make.graphics({ x: 0, y: 0, add: false });
