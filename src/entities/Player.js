@@ -10,6 +10,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
         this.setCollideWorldBounds(true);
         this.setCircle(16);
+        this.skinTint = null;
 
         this.maxHealth = BALANCE.playerMaxHp;
         this.health = BALANCE.playerMaxHp;
@@ -370,6 +371,22 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         return 1 - Phaser.Math.Clamp(this.dashCooldownRemaining / this.dashCooldown, 0, 1);
     }
 
+    /**
+     * Meta skin tint (null = default forest wolf).
+     * @param {number|null} tint
+     */
+    applySkin(tint) {
+        this.skinTint = tint != null ? tint : null;
+        if (this.skinTint != null) this.setTint(this.skinTint);
+        else this.clearTint();
+    }
+
+    /** Restore skin tint after hit flash */
+    restoreSkinTint() {
+        if (this.skinTint != null) this.setTint(this.skinTint);
+        else this.clearTint();
+    }
+
     handleRegen(delta) {
         this.regenTimer += delta;
         if (this.regenTimer >= 1000) {
@@ -420,7 +437,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.setTint(0xff0000);
 
         this.scene.time.delayedCall(140, () => {
-            if (this.active) this.clearTint();
+            if (this.active) this.restoreSkinTint();
         });
 
         this.scene.time.delayedCall(BALANCE.invulnAfterHit, () => {

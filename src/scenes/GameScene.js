@@ -11,6 +11,7 @@ import { LevelUpPanel } from '../ui/LevelUpPanel.js';
 import { soundManager } from '../systems/SoundManager.js';
 import { BALANCE } from '../config.js';
 import { RunStatsTracker } from '../systems/RunStats.js';
+import { MetaProgress } from '../systems/MetaProgress.js';
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -34,6 +35,10 @@ export default class GameScene extends Phaser.Scene {
 
         this.player = new Player(this, this.scale.width / 2, this.scale.height / 2);
 
+        // Meta: skin
+        const skinMeta = MetaProgress.getSkinMeta(MetaProgress.getSelectedSkin());
+        this.player.applySkin(skinMeta.tint);
+
         this.playerBullets = this.physics.add.group({ classType: Bullet, runChildUpdate: true });
         this.enemyBullets = this.physics.add.group({ classType: Bullet, runChildUpdate: true });
         this.enemies = this.physics.add.group({ runChildUpdate: true });
@@ -43,6 +48,9 @@ export default class GameScene extends Phaser.Scene {
         this.rockets = this.physics.add.group({ classType: Rocket, runChildUpdate: true });
 
         this.weaponSystem = new WeaponSystem(this, this.player);
+        // Meta: starting weapon
+        this.weaponSystem.applyStartingWeapon(MetaProgress.getSelectedWeapon());
+
         this.spawner = new Spawner(this, this.player);
         this.upgradeSystem = new UpgradeSystem(this, this.player, this.weaponSystem);
         this.upgradeSystem.resetRunState();
@@ -498,7 +506,7 @@ export default class GameScene extends Phaser.Scene {
         };
 
         this.levelUpPanel.show(currentOptions, {
-            rerollsLeft: BALANCE.levelUpRerolls ?? 2,
+            rerollsLeft: MetaProgress.getLevelUpRerolls(),
             bansLeft: BALANCE.levelUpBans ?? 1,
 
             onSelect: finishSelect,

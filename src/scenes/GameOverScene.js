@@ -6,6 +6,7 @@ import {
     buildDamageBreakdown,
     buildShareText
 } from '../systems/RunStats.js';
+import { MetaProgress } from '../systems/MetaProgress.js';
 
 export default class GameOverScene extends Phaser.Scene {
     constructor() {
@@ -143,20 +144,33 @@ export default class GameOverScene extends Phaser.Scene {
             wordWrap: { width: width * 0.85 }
         }).setOrigin(0.5);
 
+        // Meta essence reward (once per game-over screen)
+        const award = MetaProgress.awardRun(stats);
+        this.add.text(width / 2, rowY + 32, `+${award.earned} 🌙 эссенции  ·  всего ${award.total}`, {
+            fontSize: isPortrait ? '14px' : '16px',
+            fill: '#aaddff',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
         // Buttons
-        const btnY = isPortrait ? height - 148 : height - 150;
+        const btnY = isPortrait ? height - 168 : height - 170;
         const btnW = isPortrait ? Math.min(260, width * 0.7) : 260;
 
         this.makeButton(width / 2, btnY, btnW, '📋 ПОДЕЛИТЬСЯ', 0xffcc44, () => {
             this.shareScore();
         });
 
-        this.makeButton(width / 2, btnY + 52, btnW, 'ИГРАТЬ СНОВА', 0x00ffcc, () => {
+        this.makeButton(width / 2, btnY + 48, btnW, 'ИГРАТЬ СНОВА', 0x00ffcc, () => {
             soundManager.playLaser();
             this.scene.start('GameScene');
         });
 
-        this.makeButton(width / 2, btnY + 100, isPortrait ? Math.min(220, width * 0.6) : 220, 'В МЕНЮ', 0x88aa99, () => {
+        this.makeButton(width / 2, btnY + 92, btnW, '🏠 ЛОГОВО (МЕТА)', 0xaa88ff, () => {
+            soundManager.playButtonClick();
+            this.scene.start('MetaScene');
+        }, true);
+
+        this.makeButton(width / 2, btnY + 132, isPortrait ? Math.min(220, width * 0.6) : 220, 'В МЕНЮ', 0x88aa99, () => {
             soundManager.playButtonClick();
             this.scene.start('MenuScene');
         }, true);

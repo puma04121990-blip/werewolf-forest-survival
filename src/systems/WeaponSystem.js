@@ -8,9 +8,9 @@ export class WeaponSystem {
         this.scene = scene;
         this.player = player;
 
-        // Weapons Config with 5 Levels each
+        // Weapons Config with 5 Levels each (start weapon applied via applyStartingWeapon)
         this.weapons = {
-            blaster: { level: 1, maxLevel: 5, lastFired: 0, cooldown: 250, damage: 22, count: 1 },
+            blaster: { level: 0, maxLevel: 5, lastFired: 0, cooldown: 250, damage: 22, count: 1 },
             spread: { level: 0, maxLevel: 5, lastFired: 0, cooldown: 650, damage: 16, count: 3 },
             orbital: { level: 0, maxLevel: 5, orbs: [], graphics: null, speed: 0.12, radius: 110, damage: 25 },
             shield: { level: 0, maxLevel: 5, auraGraphics: null, radius: 90, damage: 15, lastTick: 0 },
@@ -24,6 +24,25 @@ export class WeaponSystem {
         /** weaponKey → evolutionId that consumed it */
         this.consumedBy = {};
         this._moonChainAcc = 0;
+
+        // Default start — may be overridden by meta
+        this.applyStartingWeapon('blaster');
+    }
+
+    /**
+     * Meta: set which weapon starts at level 1 (others 0).
+     * @param {string} weaponKey
+     */
+    applyStartingWeapon(weaponKey) {
+        const key = this.weapons[weaponKey] ? weaponKey : 'blaster';
+        Object.keys(this.weapons).forEach(k => {
+            this.weapons[k].level = 0;
+            this.weapons[k].evolved = false;
+            this.weapons[k].merged = false;
+        });
+        this.weapons[key].level = 1;
+        this.evolutions.clear();
+        this.consumedBy = {};
     }
 
     hasEvolution(id) {

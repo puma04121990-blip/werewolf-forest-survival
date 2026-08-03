@@ -1,6 +1,7 @@
 import BootScene from './scenes/BootScene.js';
 import PreloadScene from './scenes/PreloadScene.js';
 import MenuScene from './scenes/MenuScene.js';
+import MetaScene from './scenes/MetaScene.js';
 import GameScene from './scenes/GameScene.js';
 import PauseScene from './scenes/PauseScene.js';
 import GameOverScene from './scenes/GameOverScene.js';
@@ -85,7 +86,10 @@ export const BALANCE = {
     healMaxHpPct: 0.08,
 
     // High score key
-    storageKey: 'werewolf_forest_best'
+    storageKey: 'werewolf_forest_best',
+
+    // Meta progression
+    metaStorageKey: 'werewolf_forest_meta_v1'
 };
 
 export const config = {
@@ -114,6 +118,7 @@ export const config = {
         BootScene,
         PreloadScene,
         MenuScene,
+        MetaScene,
         GameScene,
         PauseScene,
         GameOverScene
