@@ -1,5 +1,6 @@
 import { getWeaponUpgradeDpsInfo, getPassiveDpsHint } from './WeaponStats.js';
 import { getReadyEvolutionIds, evolutionToCard, EVOLUTIONS } from './Evolutions.js';
+import { getAvailableCurseCards, CURSES } from './Curses.js';
 
 /** Weapon display names for synergy text */
 const WEAPON_META = {
@@ -68,12 +69,15 @@ export class UpgradeSystem {
         this.weaponSystem = weaponSystem;
         /** @type {Map<string, number>} passive id → times taken */
         this.passiveStacks = new Map();
+        /** @type {Map<string, number>} curse id → stacks */
+        this.curseStacks = new Map();
         /** Option ids banned for the rest of the run */
         this.bannedIds = new Set();
     }
 
     resetRunState() {
         this.passiveStacks.clear();
+        this.curseStacks.clear();
         this.bannedIds.clear();
     }
 
@@ -140,6 +144,12 @@ export class UpgradeSystem {
                 dpsLine: opt.dpsLine || 'Эволюция оружия',
                 roleTag: opt.roleTag || '✨ ЭВО',
                 roleColor: opt.roleColor || '#ffe600'
+            };
+        } else if (opt.type === 'curse') {
+            dpsInfo = {
+                dpsLine: opt.dpsLine || 'Проклятие',
+                roleTag: opt.roleTag || '☠️ CURSE',
+                roleColor: opt.roleColor || '#ff4466'
             };
         }
 
@@ -333,6 +343,12 @@ export class UpgradeSystem {
             }));
         });
 
+        // Curses — risk/reward (capped stacks)
+        getAvailableCurseCards(this.curseStacks).forEach(c => {
+            if (exclude.has(c.id)) return;
+            pool.push(this.enrichOption(c));
+        });
+
         return pool;
     }
 
@@ -361,12 +377,15 @@ export class UpgradeSystem {
         }
 
         const weaponCount = Object.values(this.weaponSystem.weapons).filter(w => w.level > 0 && !w.merged).length;
+        const curseCount = [...this.curseStacks.values()].reduce((s, n) => s + n, 0);
         const weighted = available.map(opt => {
             let w = 1;
             if (opt.type === 'evolution') w = 0; // already handled
             if (opt.type === 'weapon' && opt.rarity === 'new' && weaponCount < 3) w = 1.6;
             if (opt.type === 'weapon' && weaponCount >= 5) w = 0.7;
             if (opt.type === 'passive' && weaponCount >= 4) w = 1.3;
+            // Curses: uncommon, rarer if already stacked many
+            if (opt.type === 'curse') w = curseCount >= 3 ? 0.25 : 0.55;
             if (opt.synergies && opt.synergies.length > 0) w *= 1.25;
             return { opt, w };
         }).filter(x => x.w > 0);
@@ -413,9 +432,26 @@ export class UpgradeSystem {
         return list;
     }
 
+    getCurseStacksForHud() {
+        const list = [];
+        Object.values(CURSES).forEach(c => {
+            const stacks = this.curseStacks.get(c.id) || 0;
+            if (stacks <= 0) return;
+            list.push({
+                id: c.id,
+                name: c.name,
+                icon: c.icon,
+                stacks,
+                short: stacks > 1 ? `${c.icon} ${c.name} ×${stacks}` : `${c.icon} ${c.name}`,
+                compact: `${c.icon}×${stacks}`
+            });
+        });
+        return list;
+    }
+
     /**
      * Full loadout for pause / summary screens.
-     * @returns {{ weapons: {key,name,icon,level}[], passives: {id,name,icon,stacks}[] }}
+     * @returns {{ weapons: {key,name,icon,level}[], passives: {id,name,icon,stacks}[], curses: object[] }}
      */
     getLoadoutSummary() {
         const weapons = [];
@@ -469,7 +505,15 @@ export class UpgradeSystem {
                 : `${p.icon} ${p.name}`
         }));
 
-        return { weapons, passives };
+        const curses = this.getCurseStacksForHud().map(c => ({
+            id: c.id,
+            name: c.name,
+            icon: c.icon,
+            stacks: c.stacks,
+            line: c.short
+        }));
+
+        return { weapons, passives, curses };
     }
 
     applyUpgrade(option) {
@@ -483,6 +527,16 @@ export class UpgradeSystem {
             const n = this.passiveStacks.get(option.id) || 0;
             this.passiveStacks.set(option.id, n + 1);
             this.maybeToastEvolutionReady();
+        } else if (option.type === 'curse') {
+            const def = CURSES[option.id];
+            if (def) {
+                def.apply(this.player);
+                const n = this.curseStacks.get(option.id) || 0;
+                this.curseStacks.set(option.id, n + 1);
+                if (this.scene.hud?.showToast) {
+                    this.scene.hud.showToast(`☠️ ${def.name}`, def.roleColor || '#ff4466');
+                }
+            }
         }
     }
 

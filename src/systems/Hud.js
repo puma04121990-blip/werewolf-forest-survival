@@ -81,7 +81,18 @@ export class Hud {
             wordWrap: { width: Math.min(420, scene.scale.width * 0.55) }
         }).setScrollFactor(0).setDepth(100);
 
+        // Curses: «☠️ Кровавый договор ×2»
+        this.curseStrip = scene.add.text(20, 92, '', {
+            fontSize: '12px',
+            fill: '#ff6688',
+            fontStyle: 'bold',
+            stroke: '#1a0508',
+            strokeThickness: 3,
+            wordWrap: { width: Math.min(420, scene.scale.width * 0.55) }
+        }).setScrollFactor(0).setDepth(100);
+
         this._lastPassiveKey = '';
+        this._lastCurseKey = '';
 
         // Mute
         const initialIcon = soundManager.isMuted ? '🔇' : '🔊';
@@ -252,8 +263,9 @@ export class Hud {
             this.weaponStrip.setText(parts.join('  '));
         }
 
-        // Passive stack counters
+        // Passive + curse stack counters
         this.updatePassiveStrip(upgradeSystem, w);
+        this.updateCurseStrip(upgradeSystem, w);
 
         // Mobile dash button cooldown ring
         this.updateMobileDashButton(player);
@@ -444,6 +456,38 @@ export class Hud {
         this.passiveStrip.setScale(1.08);
         this.scene.tweens.add({
             targets: this.passiveStrip,
+            scale: 1,
+            duration: 120,
+            ease: 'Back.easeOut'
+        });
+    }
+
+    updateCurseStrip(upgradeSystem, screenW) {
+        if (!this.curseStrip) return;
+        if (!upgradeSystem || !upgradeSystem.getCurseStacksForHud) {
+            this.curseStrip.setText('');
+            return;
+        }
+
+        const curses = upgradeSystem.getCurseStacksForHud();
+        if (curses.length === 0) {
+            this.curseStrip.setText('');
+            this._lastCurseKey = '';
+            return;
+        }
+
+        const key = curses.map(c => `${c.id}:${c.stacks}`).join('|');
+        this.curseStrip.setWordWrapWidth(Math.min(440, screenW * 0.55));
+        if (key === this._lastCurseKey) return;
+        this._lastCurseKey = key;
+
+        const text = curses.length <= 3
+            ? curses.map(c => c.short).join('   ')
+            : curses.map(c => c.compact).join('  ');
+        this.curseStrip.setText(text);
+        this.curseStrip.setScale(1.08);
+        this.scene.tweens.add({
+            targets: this.curseStrip,
             scale: 1,
             duration: 120,
             ease: 'Back.easeOut'

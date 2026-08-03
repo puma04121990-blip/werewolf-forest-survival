@@ -59,7 +59,7 @@ export default class PauseScene extends Phaser.Scene {
     }
 
     drawLoadout(loadout, player, width, height, isPortrait, titleY) {
-        const { weapons, passives } = loadout;
+        const { weapons, passives, curses } = loadout;
         const panelTop = titleY + (isPortrait ? 58 : 70);
         const panelBottom = isPortrait ? height - 100 : height - 110;
         const panelH = panelBottom - panelTop;
@@ -83,9 +83,13 @@ export default class PauseScene extends Phaser.Scene {
         if (isPortrait) {
             let y = panelTop + 40;
             y = this.drawSection(panelX, y, panelW - 28, 'ОРУЖИЕ', weapons, 0x66ffcc, true);
-            y += 10;
+            y += 8;
             y = this.drawSection(panelX, y, panelW - 28, 'ПАССИВКИ', passives, 0xffdd88, true);
-            y += 12;
+            if (curses && curses.length) {
+                y += 8;
+                y = this.drawSection(panelX, y, panelW - 28, 'ПРОКЛЯТИЯ', curses, 0xff4466, true);
+            }
+            y += 10;
             this.drawPlayerStats(panelX, Math.min(y, panelBottom - 36), player, true);
         } else {
             const colW = (panelW - 48) / 2;
@@ -93,7 +97,10 @@ export default class PauseScene extends Phaser.Scene {
             const rightX = panelX + panelW / 4 + 4;
             const y0 = panelTop + 40;
             this.drawSection(leftX, y0, colW, 'ОРУЖИЕ', weapons, 0x66ffcc, false);
-            this.drawSection(rightX, y0, colW, 'ПАССИВКИ', passives, 0xffdd88, false);
+            let ry = this.drawSection(rightX, y0, colW, 'ПАССИВКИ', passives, 0xffdd88, false);
+            if (curses && curses.length) {
+                this.drawSection(rightX, ry + 8, colW, 'ПРОКЛЯТИЯ', curses, 0xff4466, false);
+            }
             this.drawPlayerStats(panelX, panelBottom - 28, player, false);
         }
     }
