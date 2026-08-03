@@ -101,25 +101,67 @@ export class LevelUpPanel {
         const titleY = isPortrait ? 48 : 72;
 
         if (isPortrait) {
-            const cardW = Math.min(520, width * 0.82);
-            const cardH = 128;
-            const totalH = options.length * (cardH + 12);
-            let startY = (height - totalH) / 2 + cardH / 2 + 8;
-            if (startY < titleY + 90) startY = titleY + 96;
+            const cardW = Math.min(540, width * 0.86);
+            const cardH = 148;
+            const totalH = options.length * (cardH + 10);
+            let startY = (height - totalH) / 2 + cardH / 2 + 4;
+            if (startY < titleY + 88) startY = titleY + 92;
 
             options.forEach((opt, idx) => {
-                this.buildCard(opt, width / 2, startY + idx * (cardH + 12), cardW, cardH, true);
+                this.buildCard(opt, width / 2, startY + idx * (cardH + 10), cardW, cardH, true);
             });
         } else {
-            const cardWidth = 250;
-            const cardHeight = 340;
-            const gap = 280;
+            const cardWidth = 260;
+            const cardHeight = 380;
+            const gap = 290;
             const startX = width / 2 - ((options.length - 1) * gap) / 2;
 
             options.forEach((opt, idx) => {
-                this.buildCard(opt, startX + idx * gap, height / 2 + 20, cardWidth, cardHeight, false);
+                this.buildCard(opt, startX + idx * gap, height / 2 + 12, cardWidth, cardHeight, false);
             });
         }
+    }
+
+    /**
+     * Mini ST vs AoE bars for weapon cards.
+     * @returns {Phaser.GameObjects.GameObject[]}
+     */
+    buildDpsChart(opt, cx, cy, maxW) {
+        const chart = opt.dpsChart;
+        if (!chart) return [];
+
+        const g = this.scene.add.graphics();
+        const barH = 7;
+        const gap = 4;
+        const max = Math.max(chart.max, 1);
+        const stW = Math.max(4, (chart.st / max) * maxW);
+        const aoeW = Math.max(4, (chart.aoe / max) * maxW);
+
+        // ST bar (cyan)
+        g.fillStyle(0x1a2a33, 0.9);
+        g.fillRoundedRect(cx - maxW / 2, cy, maxW, barH, 2);
+        g.fillStyle(0x44aadd, 1);
+        g.fillRoundedRect(cx - maxW / 2, cy, stW, barH, 2);
+
+        // AoE / multi bar (orange) — for pure ST weapons both equal
+        g.fillStyle(0x2a2218, 0.9);
+        g.fillRoundedRect(cx - maxW / 2, cy + barH + gap, maxW, barH, 2);
+        g.fillStyle(0xff9944, 1);
+        g.fillRoundedRect(cx - maxW / 2, cy + barH + gap, aoeW, barH, 2);
+
+        const labelSt = this.scene.add.text(cx - maxW / 2 - 2, cy + barH / 2, 'ST', {
+            fontSize: '9px',
+            fill: '#88ccff',
+            fontStyle: 'bold'
+        }).setOrigin(1, 0.5);
+
+        const labelAoe = this.scene.add.text(cx - maxW / 2 - 2, cy + barH + gap + barH / 2, 'AoE', {
+            fontSize: '9px',
+            fill: '#ffaa66',
+            fontStyle: 'bold'
+        }).setOrigin(1, 0.5);
+
+        return [g, labelSt, labelAoe];
     }
 
     buildCard(opt, cardX, cardY, cardW, cardH, horizontal) {
@@ -132,16 +174,16 @@ export class LevelUpPanel {
         cardBg.setInteractive({ useHandCursor: true });
 
         const nodes = [cardBg];
-        let icon, name, desc, badge, synergy, banMark;
+        let icon, name, desc, badge, synergy, banMark, roleBadge, dpsText;
 
         if (horizontal) {
-            icon = this.scene.add.text(cardX - cardW / 2 + 40, cardY - 8, opt.icon || '⚡', {
-                fontSize: '36px'
+            icon = this.scene.add.text(cardX - cardW / 2 + 40, cardY - 12, opt.icon || '⚡', {
+                fontSize: '34px'
             }).setOrigin(0.5);
             nodes.push(icon);
 
             if (opt.badge) {
-                badge = this.scene.add.text(cardX + cardW / 2 - 12, cardY - cardH / 2 + 14, opt.badge, {
+                badge = this.scene.add.text(cardX + cardW / 2 - 12, cardY - cardH / 2 + 12, opt.badge, {
                     fontSize: '11px',
                     fill: style.label,
                     fontStyle: 'bold',
@@ -151,24 +193,41 @@ export class LevelUpPanel {
                 nodes.push(badge);
             }
 
-            name = this.scene.add.text(cardX - cardW / 2 + 74, cardY - 32, opt.name, {
-                fontSize: '16px',
+            name = this.scene.add.text(cardX - cardW / 2 + 74, cardY - 42, opt.name, {
+                fontSize: '15px',
                 fill: '#ffffff',
                 fontStyle: 'bold',
                 wordWrap: { width: cardW - 110 }
             }).setOrigin(0, 0.5);
             nodes.push(name);
 
-            desc = this.scene.add.text(cardX - cardW / 2 + 74, cardY - 2, opt.description, {
-                fontSize: '12px',
+            desc = this.scene.add.text(cardX - cardW / 2 + 74, cardY - 18, opt.description, {
+                fontSize: '11px',
                 fill: style.label,
                 wordWrap: { width: cardW - 110 }
             }).setOrigin(0, 0.5);
             nodes.push(desc);
 
+            // Role + DPS line
+            if (opt.roleTag || opt.dpsLine) {
+                const roleLine = [opt.roleTag, opt.dpsLine].filter(Boolean).join('  ·  ');
+                dpsText = this.scene.add.text(cardX - cardW / 2 + 74, cardY + 10, roleLine, {
+                    fontSize: '11px',
+                    fill: opt.roleColor || '#aaddff',
+                    fontStyle: 'bold',
+                    wordWrap: { width: cardW - 110 }
+                }).setOrigin(0, 0.5);
+                nodes.push(dpsText);
+            }
+
+            if (opt.dpsChart) {
+                const chartNodes = this.buildDpsChart(opt, cardX + 30, cardY + 32, Math.min(200, cardW - 120));
+                nodes.push(...chartNodes);
+            }
+
             if (opt.synergyText) {
-                synergy = this.scene.add.text(cardX - cardW / 2 + 74, cardY + 36, opt.synergyText, {
-                    fontSize: '12px',
+                synergy = this.scene.add.text(cardX - cardW / 2 + 74, cardY + 58, opt.synergyText, {
+                    fontSize: '11px',
                     fill: '#ffdd77',
                     fontStyle: 'bold',
                     wordWrap: { width: cardW - 110 }
@@ -176,11 +235,11 @@ export class LevelUpPanel {
                 nodes.push(synergy);
             }
         } else {
-            icon = this.scene.add.text(cardX, cardY - 105, opt.icon || '⚡', { fontSize: '48px' }).setOrigin(0.5);
+            icon = this.scene.add.text(cardX, cardY - 130, opt.icon || '⚡', { fontSize: '46px' }).setOrigin(0.5);
             nodes.push(icon);
 
             if (opt.badge) {
-                badge = this.scene.add.text(cardX, cardY - 58, opt.badge, {
+                badge = this.scene.add.text(cardX, cardY - 82, opt.badge, {
                     fontSize: '12px',
                     fill: style.label,
                     fontStyle: 'bold',
@@ -190,7 +249,18 @@ export class LevelUpPanel {
                 nodes.push(badge);
             }
 
-            name = this.scene.add.text(cardX, cardY - 22, opt.name, {
+            if (opt.roleTag) {
+                roleBadge = this.scene.add.text(cardX, cardY - 58, opt.roleTag, {
+                    fontSize: '13px',
+                    fill: opt.roleColor || '#aaddff',
+                    fontStyle: 'bold',
+                    backgroundColor: '#00000099',
+                    padding: { x: 8, y: 3 }
+                }).setOrigin(0.5);
+                nodes.push(roleBadge);
+            }
+
+            name = this.scene.add.text(cardX, cardY - 28, opt.name, {
                 fontSize: '16px',
                 fill: '#ffffff',
                 fontStyle: 'bold',
@@ -199,17 +269,33 @@ export class LevelUpPanel {
             }).setOrigin(0.5);
             nodes.push(name);
 
-            desc = this.scene.add.text(cardX, cardY + 40, opt.description, {
-                fontSize: '13px',
+            desc = this.scene.add.text(cardX, cardY + 18, opt.description, {
+                fontSize: '12px',
                 fill: style.label,
                 align: 'center',
                 wordWrap: { width: cardW - 32 }
             }).setOrigin(0.5);
             nodes.push(desc);
 
-            if (opt.synergyText) {
-                synergy = this.scene.add.text(cardX, cardY + 100, opt.synergyText, {
+            if (opt.dpsLine) {
+                dpsText = this.scene.add.text(cardX, cardY + 62, opt.dpsLine, {
                     fontSize: '12px',
+                    fill: '#aaddff',
+                    fontStyle: 'bold',
+                    align: 'center',
+                    wordWrap: { width: cardW - 24 }
+                }).setOrigin(0.5);
+                nodes.push(dpsText);
+            }
+
+            if (opt.dpsChart) {
+                const chartNodes = this.buildDpsChart(opt, cardX + 10, cardY + 88, cardW - 70);
+                nodes.push(...chartNodes);
+            }
+
+            if (opt.synergyText) {
+                synergy = this.scene.add.text(cardX, cardY + 128, opt.synergyText, {
+                    fontSize: '11px',
                     fill: '#ffdd77',
                     fontStyle: 'bold',
                     align: 'center',
@@ -218,8 +304,8 @@ export class LevelUpPanel {
                 nodes.push(synergy);
 
                 if (opt.synergyDetail && opt.synergyDetail !== opt.synergyText) {
-                    const detail = this.scene.add.text(cardX, cardY + 122, opt.synergyDetail, {
-                        fontSize: '11px',
+                    const detail = this.scene.add.text(cardX, cardY + 148, opt.synergyDetail, {
+                        fontSize: '10px',
                         fill: '#ccaa66',
                         align: 'center',
                         wordWrap: { width: cardW - 28 }

@@ -1,3 +1,5 @@
+import { getWeaponUpgradeDpsInfo, getPassiveDpsHint } from './WeaponStats.js';
+
 /** Weapon display names for synergy text */
 const WEAPON_META = {
     blaster: { name: 'Кровавые когти', icon: '🐾' },
@@ -125,13 +127,27 @@ export class UpgradeSystem {
     enrichOption(opt) {
         const synergies = this.getSynergiesForOption(opt);
         const primary = synergies[0] || null;
+
+        let dpsInfo = null;
+        if (opt.type === 'weapon' && opt.key) {
+            const curLvl = this.weaponSystem.getWeaponLevel(opt.key);
+            dpsInfo = getWeaponUpgradeDpsInfo(opt.key, curLvl, this.player);
+        } else if (opt.type === 'passive' && opt.id) {
+            dpsInfo = getPassiveDpsHint(opt.id, this.player);
+        }
+
         return {
             ...opt,
             synergies,
             synergyText: primary
                 ? `Синергия: ${primary.partnerIcon} ${primary.partnerName}`
                 : null,
-            synergyDetail: primary ? primary.text : null
+            synergyDetail: primary ? primary.text : null,
+            dpsInfo,
+            dpsLine: dpsInfo?.dpsLine || null,
+            roleTag: dpsInfo?.roleTag || null,
+            roleColor: dpsInfo?.roleColor || null,
+            dpsChart: dpsInfo?.chart || null
         };
     }
 
