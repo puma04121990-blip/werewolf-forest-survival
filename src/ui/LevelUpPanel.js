@@ -42,17 +42,19 @@ export class LevelUpPanel {
     show(options, handlers = {}) {
         soundManager.playLevelUp();
 
-        this.handlers = handlers;
+        // Destroy previous UI without wiping the NEW handlers we are about to set
+        this.destroyUiOnly();
+
+        this.handlers = handlers || {};
         this.rerollsLeft = handlers.rerollsLeft ?? 0;
         this.bansLeft = handlers.bansLeft ?? 0;
         this.mode = 'select';
-        this.options = options;
+        this.options = options || [];
+        this._selectLocked = false;
 
         const width = this.scene.scale.width;
         const height = this.scene.scale.height;
         const isPortrait = isPortraitMode();
-
-        if (this.container) this.hide();
 
         this.container = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(1000);
 
@@ -347,17 +349,7 @@ export class LevelUpPanel {
         cardBg.on('pointerover', applyHover);
         cardBg.on('pointerout', clearHover);
         cardBg.on('pointerdown', () => {
-            soundManager.playButtonClick && soundManager.playButtonClick();
-            if (this.mode === 'ban') {
-                this.handleBanClick(opt);
-                return;
-            }
-            // Capture callback BEFORE hide() — hide() nulls this.handlers
-            const onSelect = this.handlers && this.handlers.onSelect;
-            if (onSelect) {
-                this.hide();
-                onSelect(opt);
-            }
+            this.selectOption(opt);
         });
 
         // Store refs for ban mode restyle
@@ -486,28 +478,74 @@ export class LevelUpPanel {
 
         const next = this.handlers.onBan(opt, this.options);
         this.bansLeft = Math.max(0, this.bansLeft - 1);
-        if (this.handlers.onBanUsed) this.handlers.onBanUsed(this.bansLeft);
+        if (this.handlers && this.handlers.onBanUsed) this.handlers.onBanUsed(this.bansLeft);
 
         this.mode = 'select';
-        this.modeBanner.setVisible(false);
-        this.hintText.setText(next && next.length ? 'Карта забанена · выбери усиление' : 'Выбери усиление');
+        if (this.modeBanner) this.modeBanner.setVisible(false);
+        if (this.hintText) {
+            this.hintText.setText(next && next.length ? 'Карта забанена · выбери усиление' : 'Выбери усиление');
+        }
 
         if (next && next.length > 0) {
             this.renderCards(next);
         } else {
-            this.renderCards(this.options.filter(o => o.id !== opt.id));
+            this.renderCards((this.options || []).filter(o => o.id !== opt.id));
         }
         this.renderActionButtons();
     }
 
-    hide() {
+    /**
+     * Safe select: never touch this.handlers after UI teardown.
+     */
+    selectOption(opt) {
+        if (this._selectLocked) return;
+        if (this.mode === 'ban') {
+            this.handleBanClick(opt);
+            return;
+        }
+
+        try {
+            soundManager.playButtonClick && soundManager.playButtonClick();
+        } catch (e) { /* ignore */ }
+
+        const onSelect = this.handlers && typeof this.handlers.onSelect === 'function'
+            ? this.handlers.onSelect
+            : null;
+
+        this._selectLocked = true;
+        this.destroyUiOnly();
+        this.handlers = null;
+        this.mode = 'select';
+
+        if (onSelect) {
+            try {
+                onSelect(opt);
+            } catch (err) {
+                console.error('LevelUp onSelect error', err);
+            }
+        }
+    }
+
+    /** Destroy panel graphics; does NOT clear handlers (show() needs that). */
+    destroyUiOnly() {
         if (this.container) {
-            this.container.destroy();
+            try {
+                this.container.destroy(true);
+            } catch (e) { /* ignore */ }
             this.container = null;
         }
         this.cardsLayer = null;
         this.actionsLayer = null;
+        this.hintText = null;
+        this.modeBanner = null;
+        this.rerollBtn = null;
+        this.banBtn = null;
+    }
+
+    hide() {
+        this.destroyUiOnly();
         this.handlers = null;
         this.mode = 'select';
+        this._selectLocked = false;
     }
 }
