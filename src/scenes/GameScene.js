@@ -552,14 +552,71 @@ export default class GameScene extends Phaser.Scene {
 
         if (enemy === this.activeBoss) {
             this.activeBoss = null;
-            this.hud.showToast('ИНКВИЗИТОР ПАЛ', '#ff6688');
+            const fallen = enemy.bossShortName || 'БОСС';
+            this.hud.showToast(`${fallen} ПАЛ`, '#ff6688');
         }
     }
 
     onBossSpawned(boss) {
         this.activeBoss = boss;
-        this.hud.showToast('⚔ БОСС: ВЕЛИКИЙ ИНКВИЗИТОР', '#ff2255');
+        const title = boss.bossTitle || '⚔ БОСС';
+        this.hud.showToast(title, boss.bossToastColor || '#ff2255');
         soundManager.playHowl && soundManager.playHowl();
+    }
+
+    /**
+     * Delayed ground hazard (witch blood pool / beast shockwave zone).
+     * @param {number} x
+     * @param {number} y
+     * @param {{ radius?: number, delay?: number, damage?: number, color?: number, enemyType?: string }} opts
+     */
+    spawnBossHazard(x, y, opts = {}) {
+        const radius = opts.radius || 70;
+        const delay = opts.delay || 700;
+        const damage = opts.damage || 12;
+        const color = opts.color || 0xaa0066;
+        const enemyType = opts.enemyType || 'boss_witch';
+
+        const warn = this.add.circle(x, y, 12, color, 0.25).setDepth(8);
+        warn.setStrokeStyle(2, color, 0.8);
+        this.tweens.add({
+            targets: warn,
+            radius,
+            alpha: 0.45,
+            duration: delay,
+            ease: 'Sine.easeOut'
+        });
+
+        this.time.delayedCall(delay, () => {
+            if (warn.active) {
+                this.tweens.add({
+                    targets: warn,
+                    alpha: 0,
+                    duration: 200,
+                    onComplete: () => warn.destroy()
+                });
+            }
+            const blast = this.add.circle(x, y, radius * 0.4, color, 0.55).setDepth(9);
+            this.tweens.add({
+                targets: blast,
+                radius,
+                alpha: 0,
+                duration: 280,
+                onComplete: () => blast.destroy()
+            });
+            this.cameras.main.shake(80, 0.008);
+
+            const player = this.player;
+            if (player && player.active) {
+                const dist = Phaser.Math.Distance.Between(x, y, player.x, player.y);
+                if (dist < radius) {
+                    player.takeDamage(damage, {
+                        kind: 'slam',
+                        enemyType
+                    });
+                }
+            }
+        });
     }
 
     onDifficultyUp(level) {

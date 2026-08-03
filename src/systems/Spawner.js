@@ -1,6 +1,9 @@
 import { Enemy } from '../entities/Enemy.js';
 import { BALANCE } from '../config.js';
 
+/** Ordered first appearances, then cycles */
+export const BOSS_ROSTER = ['boss', 'boss_witch', 'boss_beast'];
+
 export class Spawner {
     constructor(scene, player) {
         this.scene = scene;
@@ -61,11 +64,17 @@ export class Spawner {
         }
     }
 
+    pickBossType() {
+        // 1st Inquisitor, 2nd Witch, 3rd Beast, then cycle
+        const idx = Math.max(0, this.bossesSpawned - 1) % BOSS_ROSTER.length;
+        return BOSS_ROSTER[idx];
+    }
+
     spawnBoss(enemyGroup) {
         const pos = this.getRandomSpawnPosition();
-        // Boss difficulty tracks how many bosses already spawned
         const bossDiff = this.difficultyLevel + this.bossesSpawned * 2;
-        const boss = new Enemy(this.scene, pos.x, pos.y, 'boss', bossDiff);
+        const bossType = this.pickBossType();
+        const boss = new Enemy(this.scene, pos.x, pos.y, bossType, bossDiff);
         enemyGroup.add(boss);
         this.scene.events.emit('bossSpawned', boss);
     }

@@ -17,7 +17,9 @@ export const ENEMY_TYPE_META = {
     tank: { name: 'Волк-танк', icon: '🐺' },
     shooter: { name: 'Охотник', icon: '🏹' },
     elite: { name: 'Серебряный охотник', icon: '⚔️' },
-    boss: { name: 'Великий инквизитор', icon: '👑' }
+    boss: { name: 'Великий инквизитор', icon: '👑' },
+    boss_witch: { name: 'Лунная ведьма', icon: '🌙' },
+    boss_beast: { name: 'Зверь леса', icon: '🐗' }
 };
 
 /**

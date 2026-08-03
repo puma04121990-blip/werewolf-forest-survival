@@ -124,7 +124,7 @@ export class Hud {
         // Boss bar
         this.bossContainer = scene.add.container(scene.scale.width / 2, 68).setScrollFactor(0).setVisible(false).setDepth(100);
         this.bossBar = scene.add.graphics();
-        this.bossText = scene.add.text(0, -20, '⚔ ВЕЛИКИЙ ИНКВИЗИТОР', {
+        this.bossText = scene.add.text(0, -20, '⚔ БОСС', {
             fontSize: '15px',
             fill: '#ff4477',
             fontStyle: 'bold',
@@ -262,6 +262,8 @@ export class Hud {
             this.bossBar.lineStyle(1, 0xff6688, 0.5);
             this.bossBar.strokeRoundedRect(-bWidth / 2, 0, bWidth, bHeight, 3);
 
+            const title = boss.bossTitle || '⚔ БОСС';
+            this.bossText.setText(title);
             const phaseLabel = boss.phase === 3 ? 'ФАЗА III — ЯРОСТЬ' : boss.phase === 2 ? 'ФАЗА II' : 'ФАЗА I';
             this.bossPhaseText.setText(phaseLabel);
         } else {

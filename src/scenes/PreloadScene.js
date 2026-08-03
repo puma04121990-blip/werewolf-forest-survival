@@ -187,6 +187,42 @@ export default class PreloadScene extends Phaser.Scene {
 
         gBoss.generateTexture('enemy_boss', 64, 64);
 
+        // ==========================================
+        // 6b. БОСС: ЛУННАЯ ВЕДЬМА (boss_witch)
+        // ==========================================
+        const gWitch = this.make.graphics({ x: 0, y: 0, add: false });
+        gWitch.fillStyle(0x2a1040, 1.0);
+        gWitch.fillTriangle(32, 4, 56, 56, 8, 56);
+        gWitch.fillStyle(0x6a30aa, 1.0);
+        gWitch.fillCircle(32, 22, 14);
+        gWitch.fillStyle(0xcc88ff, 1.0);
+        gWitch.fillCircle(32, 20, 8);
+        gWitch.fillStyle(0xff66cc, 1.0);
+        gWitch.fillCircle(28, 18, 2);
+        gWitch.fillCircle(36, 18, 2);
+        gWitch.fillStyle(0xaa66ff, 1.0);
+        gWitch.fillCircle(18, 40, 6);
+        gWitch.fillCircle(46, 40, 6);
+        gWitch.generateTexture('enemy_boss_witch', 64, 64);
+
+        // ==========================================
+        // 6c. БОСС: ЗВЕРЬ ЛЕСА (boss_beast)
+        // ==========================================
+        const gBeast = this.make.graphics({ x: 0, y: 0, add: false });
+        gBeast.fillStyle(0x3a2208, 1.0);
+        gBeast.fillRect(10, 18, 44, 36);
+        gBeast.fillStyle(0x5a3010, 1.0);
+        gBeast.fillTriangle(32, 2, 58, 28, 6, 28);
+        gBeast.fillStyle(0xff4400, 1.0);
+        gBeast.fillCircle(22, 18, 4);
+        gBeast.fillCircle(42, 18, 4);
+        gBeast.fillStyle(0x221100, 1.0);
+        gBeast.fillTriangle(8, 28, 0, 52, 16, 48);
+        gBeast.fillTriangle(56, 28, 64, 52, 48, 48);
+        gBeast.fillStyle(0xffaa00, 1.0);
+        gBeast.fillTriangle(28, 24, 32, 36, 36, 24);
+        gBeast.generateTexture('enemy_boss_beast', 64, 64);
+
         // Элементы оружия и снарядов
         // Кровавый разрез (Клочья)
         const gClaw = this.make.graphics({ x: 0, y: 0, add: false });
