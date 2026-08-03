@@ -42,6 +42,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.trailTimer = 0;
         this.regenTimer = 0;
 
+        // Last non-zero move vector (for dash button when standing still)
+        this.lastMoveX = 0;
+        this.lastMoveY = -1;
+
         this.cursors = scene.input.keyboard.createCursorKeys();
         this.wasd = scene.input.keyboard.addKeys({
             up: Phaser.Input.Keyboard.KeyCodes.W,
@@ -85,8 +89,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         if (this.cursors.up.isDown || this.wasd.up.isDown) moveY -= 1;
         if (this.cursors.down.isDown || this.wasd.down.isDown) moveY += 1;
 
+        // Touch move: ignore pointers that started on UI (dash / pause / mute)
+        const uiPointers = this.scene.uiPointers;
         const pointer = this.scene.input.activePointer;
-        if (pointer.isDown && pointer.getDuration() > 40) {
+        const pointerIsUi = uiPointers && uiPointers.has(pointer.id);
+        if (pointer.isDown && !pointerIsUi && pointer.getDuration() > 40) {
             const angle = Phaser.Math.Angle.Between(this.x, this.y, pointer.worldX, pointer.worldY);
             const dist = Phaser.Math.Distance.Between(this.x, this.y, pointer.worldX, pointer.worldY);
             if (dist > 16) {
@@ -95,8 +102,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             }
         }
 
-        if (this.scene.input.pointer2 && this.scene.input.pointer2.isDown && this.canDash && (moveX !== 0 || moveY !== 0)) {
-            this.dash(moveX, moveY);
+        // Legacy: second finger still dashes
+        if (this.scene.input.pointer2 && this.scene.input.pointer2.isDown) {
+            const p2ui = uiPointers && uiPointers.has(this.scene.input.pointer2.id);
+            if (!p2ui && this.canDash && (moveX !== 0 || moveY !== 0)) {
+                this.dash(moveX, moveY);
+            }
         }
 
         if (moveX !== 0 && moveY !== 0) {
@@ -104,15 +115,44 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             moveY *= 0.7071;
         }
 
-        this.setVelocity(moveX * this.speed, moveY * this.speed);
-
         if (moveX !== 0 || moveY !== 0) {
+            this.lastMoveX = moveX;
+            this.lastMoveY = moveY;
             this.rotation = Math.atan2(moveY, moveX) + Math.PI / 2;
         }
 
-        if (Phaser.Input.Keyboard.JustDown(this.wasd.space) && this.canDash && (moveX !== 0 || moveY !== 0)) {
-            this.dash(moveX, moveY);
+        this.setVelocity(moveX * this.speed, moveY * this.speed);
+
+        if (Phaser.Input.Keyboard.JustDown(this.wasd.space) && this.canDash) {
+            this.tryDash();
         }
+    }
+
+    /**
+     * Dash in last movement direction (or facing). Used by Space + mobile button.
+     * @returns {boolean}
+     */
+    tryDash() {
+        if (!this.canDash || this.isDashing || !this.active) return false;
+
+        let dx = this.lastMoveX;
+        let dy = this.lastMoveY;
+
+        // If currently moving, prefer live velocity
+        if (this.body && (Math.abs(this.body.velocity.x) > 20 || Math.abs(this.body.velocity.y) > 20)) {
+            dx = this.body.velocity.x;
+            dy = this.body.velocity.y;
+        }
+
+        if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
+            // Facing direction (sprite rotation is moveAngle + PI/2)
+            const a = this.rotation - Math.PI / 2;
+            dx = Math.cos(a);
+            dy = Math.sin(a);
+        }
+
+        this.dash(dx, dy);
+        return true;
     }
 
     dash(dirX, dirY) {

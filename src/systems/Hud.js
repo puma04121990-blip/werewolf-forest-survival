@@ -1,4 +1,5 @@
 import { soundManager } from './SoundManager.js';
+import { isTouchDevice, isPortraitMode } from '../utils/orientation.js';
 
 const WEAPON_ICONS = {
     blaster: '🐾',
@@ -13,6 +14,9 @@ const WEAPON_ICONS = {
 export class Hud {
     constructor(scene) {
         this.scene = scene;
+
+        // Track UI pointer ids so movement doesn't steal dash taps
+        if (!scene.uiPointers) scene.uiPointers = new Set();
 
         this.hpBar = scene.add.graphics().setScrollFactor(0).setDepth(100);
         this.xpBar = scene.add.graphics().setScrollFactor(0).setDepth(100);
@@ -85,23 +89,37 @@ export class Hud {
             fontSize: '24px'
         }).setScrollFactor(0).setDepth(100).setInteractive({ useHandCursor: true });
 
-        this.muteBtn.on('pointerdown', () => {
+        this.muteBtn.on('pointerdown', (pointer) => {
+            this.markUiPointer(pointer);
             const muted = soundManager.toggleMute();
             this.muteBtn.setText(muted ? '🔇' : '🔊');
             soundManager.playButtonClick();
         });
+        this.muteBtn.on('pointerup', (p) => this.clearUiPointer(p));
+        this.muteBtn.on('pointerout', (p) => this.clearUiPointer(p));
 
         // Pause button (mobile-friendly)
         this.pauseBtn = scene.add.text(scene.scale.width - 88, 16, '⏸', {
             fontSize: '22px'
         }).setScrollFactor(0).setDepth(100).setInteractive({ useHandCursor: true });
 
-        this.pauseBtn.on('pointerdown', () => {
+        this.pauseBtn.on('pointerdown', (pointer) => {
+            this.markUiPointer(pointer);
             if (scene.isLevelingUp) return;
             soundManager.playButtonClick();
             scene.scene.pause();
             scene.scene.launch('PauseScene');
         });
+        this.pauseBtn.on('pointerup', (p) => this.clearUiPointer(p));
+        this.pauseBtn.on('pointerout', (p) => this.clearUiPointer(p));
+
+        // Mobile dash button (bottom-right) — not only 2nd finger
+        this.dashBtn = null;
+        this.dashBtnGfx = null;
+        this.dashBtnIcon = null;
+        this.dashBtnLabel = null;
+        this.dashBtnReady = true;
+        this.createMobileDashButton();
 
         // Boss bar
         this.bossContainer = scene.add.container(scene.scale.width / 2, 68).setScrollFactor(0).setVisible(false).setDepth(100);
@@ -227,6 +245,9 @@ export class Hud {
         // Passive stack counters
         this.updatePassiveStrip(upgradeSystem, w);
 
+        // Mobile dash button cooldown ring
+        this.updateMobileDashButton(player);
+
         // Boss
         if (boss && boss.active) {
             this.bossContainer.setVisible(true);
@@ -246,6 +267,131 @@ export class Hud {
         } else {
             this.bossContainer.setVisible(false);
         }
+    }
+
+    markUiPointer(pointer) {
+        if (!pointer || !this.scene.uiPointers) return;
+        this.scene.uiPointers.add(pointer.id);
+    }
+
+    clearUiPointer(pointer) {
+        if (!pointer || !this.scene.uiPointers) return;
+        this.scene.uiPointers.delete(pointer.id);
+    }
+
+    createMobileDashButton() {
+        // Always show on touch; also show on narrow screens for hybrid devices
+        const show = isTouchDevice() || (typeof window !== 'undefined' && window.innerWidth < 900);
+        if (!show) return;
+
+        const scene = this.scene;
+        const w = scene.scale.width;
+        const h = scene.scale.height;
+        const portrait = isPortraitMode();
+        const r = portrait ? 42 : 48;
+        const cx = w - (portrait ? 52 : 64);
+        const cy = h - (portrait ? 78 : 72);
+
+        this.dashBtnGfx = scene.add.graphics().setScrollFactor(0).setDepth(120);
+        this.dashBtnHit = scene.add.circle(cx, cy, r + 8, 0x000000, 0.001)
+            .setScrollFactor(0)
+            .setDepth(121)
+            .setInteractive({ useHandCursor: true });
+
+        this.dashBtnIcon = scene.add.text(cx, cy - 6, '💨', {
+            fontSize: portrait ? '28px' : '32px'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(122);
+
+        this.dashBtnLabel = scene.add.text(cx, cy + 18, 'РЫВОК', {
+            fontSize: '11px',
+            fill: '#ccffee',
+            fontStyle: 'bold',
+            stroke: '#001a10',
+            strokeThickness: 3
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(122);
+
+        this.dashBtnR = r;
+        this.dashBtnCx = cx;
+        this.dashBtnCy = cy;
+
+        this.dashBtnHit.on('pointerdown', (pointer) => {
+            this.markUiPointer(pointer);
+            if (scene.isLevelingUp) return;
+            const player = scene.player;
+            if (!player || !player.active) return;
+
+            const ok = player.tryDash();
+            if (ok) {
+                // Press feedback
+                this.dashBtnIcon.setScale(0.85);
+                scene.tweens.add({
+                    targets: [this.dashBtnIcon, this.dashBtnLabel],
+                    scale: 1,
+                    duration: 120,
+                    ease: 'Back.easeOut'
+                });
+            } else {
+                // Not ready — subtle shake
+                scene.tweens.add({
+                    targets: this.dashBtnIcon,
+                    x: cx + 4,
+                    yoyo: true,
+                    duration: 50,
+                    repeat: 2,
+                    onComplete: () => this.dashBtnIcon.setPosition(cx, cy - 6)
+                });
+            }
+        });
+
+        this.dashBtnHit.on('pointerup', (p) => this.clearUiPointer(p));
+        this.dashBtnHit.on('pointerout', (p) => this.clearUiPointer(p));
+
+        // Initial draw
+        this.drawDashButton(1, true);
+    }
+
+    drawDashButton(readyRatio, ready) {
+        if (!this.dashBtnGfx) return;
+        const g = this.dashBtnGfx;
+        const r = this.dashBtnR;
+        const cx = this.dashBtnCx;
+        const cy = this.dashBtnCy;
+
+        g.clear();
+        // Outer ring
+        g.fillStyle(0x0a1a14, 0.72);
+        g.fillCircle(cx, cy, r + 4);
+        g.lineStyle(3, ready ? 0x66ffcc : 0x445566, 0.95);
+        g.strokeCircle(cx, cy, r);
+
+        // Cooldown arc (fills as ready)
+        if (readyRatio < 1) {
+            g.lineStyle(5, 0x338866, 0.9);
+            g.beginPath();
+            // Phaser arc: from -90deg, sweep by readyRatio * 360
+            const start = -Math.PI / 2;
+            const end = start + readyRatio * Math.PI * 2;
+            g.arc(cx, cy, r - 2, start, end, false);
+            g.strokePath();
+        } else {
+            g.fillStyle(0x22aa77, 0.22);
+            g.fillCircle(cx, cy, r - 4);
+        }
+
+        if (this.dashBtnLabel) {
+            this.dashBtnLabel.setColor(ready ? '#ccffee' : '#778888');
+            this.dashBtnLabel.setAlpha(ready ? 1 : 0.7);
+        }
+        if (this.dashBtnIcon) {
+            this.dashBtnIcon.setAlpha(ready ? 1 : 0.55);
+        }
+    }
+
+    updateMobileDashButton(player) {
+        if (!this.dashBtnGfx || !player) return;
+        const ratio = player.getDashCooldownRatio();
+        const ready = ratio >= 1 && player.canDash && !player.isDashing;
+        this.drawDashButton(ratio, ready);
     }
 
     /**

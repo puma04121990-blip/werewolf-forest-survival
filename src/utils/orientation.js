@@ -11,3 +11,16 @@ export function isPortraitMode() {
     // Fallback
     return false;
 }
+
+/**
+ * Touch / mobile-like input — show on-screen dash button.
+ */
+export function isTouchDevice() {
+    if (typeof window === 'undefined') return false;
+    try {
+        if (navigator.maxTouchPoints > 0) return true;
+        if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return true;
+        if ('ontouchstart' in window) return true;
+    } catch (e) { /* ignore */ }
+    return false;
+}
