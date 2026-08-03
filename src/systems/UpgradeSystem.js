@@ -1,52 +1,185 @@
+/** Weapon display names for synergy text */
+const WEAPON_META = {
+    blaster: { name: 'Кровавые когти', icon: '🐾' },
+    spread: { name: 'Волчий рык', icon: '🐺' },
+    orbital: { name: 'Духи Луны', icon: '🌕' },
+    shield: { name: 'Аура Хищника', icon: '🩸' },
+    lightning: { name: 'Лунный разряд', icon: '⚡' },
+    rockets: { name: 'Призыв Стаи', icon: '👻' },
+    mines: { name: 'Кровавые руны', icon: '🔮' }
+};
+
+const PASSIVE_META = {
+    passive_speed: { name: 'Инстинкт-грация', icon: '🐾' },
+    passive_health: { name: 'Густая шкура', icon: '🛡️' },
+    passive_damage: { name: 'Жажда крови', icon: '⚔️' },
+    passive_firerate: { name: 'Ярость зверя', icon: '⏱️' },
+    passive_magnet: { name: 'Звериное чутьё', icon: '🌙' },
+    passive_crit: { name: 'Смертельный клык', icon: '💥' },
+    passive_lifesteal: { name: 'Кровавый пир', icon: '🧛' },
+    passive_armor: { name: 'Костяной панцирь', icon: '🦴' },
+    passive_regen: { name: 'Лунное исцеление', icon: '✨' },
+    passive_dash: { name: 'Теневой рывок', icon: '💨' }
+};
+
+/**
+ * Pairwise synergies: if player owns `withId` and card is `cardId` (or reverse),
+ * show the synergy line. `label` is short UI text.
+ */
+const SYNERGY_PAIRS = [
+    // Weapons + passives
+    { a: 'weapon_blaster', b: 'passive_damage', label: 'Жажда крови × Когти' },
+    { a: 'weapon_blaster', b: 'passive_crit', label: 'Крит-когти' },
+    { a: 'weapon_blaster', b: 'passive_firerate', label: 'Яростные когти' },
+    { a: 'weapon_blaster', b: 'passive_lifesteal', label: 'Кровавые когти' },
+    { a: 'weapon_spread', b: 'passive_damage', label: 'Рык силы' },
+    { a: 'weapon_spread', b: 'passive_firerate', label: 'Непрерывный рёв' },
+    { a: 'weapon_orbital', b: 'passive_magnet', label: 'Духи тянут эссенцию' },
+    { a: 'weapon_orbital', b: 'passive_damage', label: 'Лунный гнев' },
+    { a: 'weapon_shield', b: 'passive_armor', label: 'Панцирь + аура' },
+    { a: 'weapon_shield', b: 'passive_lifesteal', label: 'Аура вампира' },
+    { a: 'weapon_shield', b: 'passive_health', label: 'Танк-хищник' },
+    { a: 'weapon_lightning', b: 'passive_crit', label: 'Критический разряд' },
+    { a: 'weapon_lightning', b: 'passive_firerate', label: 'Цепная буря' },
+    { a: 'weapon_rockets', b: 'passive_damage', label: 'Стая-убийца' },
+    { a: 'weapon_rockets', b: 'passive_magnet', label: 'Охотничий нюх стаи' },
+    { a: 'weapon_mines', b: 'passive_damage', label: 'Смертельные руны' },
+    { a: 'weapon_mines', b: 'passive_armor', label: 'Контроль зоны' },
+    { a: 'passive_dash', b: 'weapon_shield', label: 'Рывок сквозь ауру' },
+    { a: 'passive_regen', b: 'passive_health', label: 'Регенерация шкуры' },
+    { a: 'passive_crit', b: 'passive_damage', label: 'Смертоносный билд' },
+    // Weapon combos
+    { a: 'weapon_blaster', b: 'weapon_shield', label: 'Когти + аура' },
+    { a: 'weapon_spread', b: 'weapon_shield', label: 'Рык + аура' },
+    { a: 'weapon_orbital', b: 'weapon_lightning', label: 'Луна + молния' },
+    { a: 'weapon_rockets', b: 'weapon_mines', label: 'Стая + руны' },
+    { a: 'weapon_spread', b: 'weapon_lightning', label: 'Рёв и гром' },
+    { a: 'weapon_orbital', b: 'weapon_shield', label: 'Двойная орбита' },
+    { a: 'weapon_blaster', b: 'weapon_rockets', label: 'Когти и стая' }
+];
+
 export class UpgradeSystem {
     constructor(scene, player, weaponSystem) {
         this.scene = scene;
         this.player = player;
         this.weaponSystem = weaponSystem;
+        /** @type {Map<string, number>} passive id → times taken */
+        this.passiveStacks = new Map();
+        /** Option ids banned for the rest of the run */
+        this.bannedIds = new Set();
     }
 
-    getAvailableOptions() {
+    resetRunState() {
+        this.passiveStacks.clear();
+        this.bannedIds.clear();
+    }
+
+    getWeaponDisplayName(key) {
+        return WEAPON_META[key]?.name || key;
+    }
+
+    isOwned(optionId) {
+        if (optionId.startsWith('weapon_')) {
+            const key = optionId.replace('weapon_', '');
+            return this.weaponSystem.getWeaponLevel(key) > 0;
+        }
+        return (this.passiveStacks.get(optionId) || 0) > 0;
+    }
+
+    /**
+     * Synergies for a card given current loadout.
+     * @returns {{ text: string, partnerIcon: string, partnerName: string }[]}
+     */
+    getSynergiesForOption(opt) {
+        const cardId = opt.id;
+        const results = [];
+
+        SYNERGY_PAIRS.forEach(pair => {
+            let partnerId = null;
+            if (pair.a === cardId && this.isOwned(pair.b)) partnerId = pair.b;
+            else if (pair.b === cardId && this.isOwned(pair.a)) partnerId = pair.a;
+            // Also: upgrading weapon you already own still "owns" it — show future synergies
+            // with passives you have when picking weapon upgrade
+            if (!partnerId) return;
+
+            const meta = partnerId.startsWith('weapon_')
+                ? WEAPON_META[partnerId.replace('weapon_', '')]
+                : PASSIVE_META[partnerId];
+
+            results.push({
+                text: pair.label,
+                partnerIcon: meta?.icon || '✨',
+                partnerName: meta?.name || partnerId
+            });
+        });
+
+        // Deduplicate by label
+        const seen = new Set();
+        return results.filter(r => {
+            if (seen.has(r.text)) return false;
+            seen.add(r.text);
+            return true;
+        });
+    }
+
+    enrichOption(opt) {
+        const synergies = this.getSynergiesForOption(opt);
+        const primary = synergies[0] || null;
+        return {
+            ...opt,
+            synergies,
+            synergyText: primary
+                ? `Синергия: ${primary.partnerIcon} ${primary.partnerName}`
+                : null,
+            synergyDetail: primary ? primary.text : null
+        };
+    }
+
+    getAvailableOptions(excludeIds = []) {
+        const exclude = new Set([...excludeIds, ...this.bannedIds]);
         const pool = [];
 
         const weaponDefs = [
-            { key: 'blaster', name: 'Кровавые когти', icon: '🐾', rarity: 'weapon',
+            { key: 'blaster', name: 'Кровавые когти', icon: '🐾',
               newDesc: 'Авто-разрезы по ближайшему врагу',
               upDesc: '+урон, +скорость, двойной/тройной разрез' },
-            { key: 'spread', name: 'Волчий рык', icon: '🐺', rarity: 'weapon',
+            { key: 'spread', name: 'Волчий рык', icon: '🐺',
               newDesc: 'Веер ультразвуковых волн',
               upDesc: 'Больше волн (до кругового рёва на 5 ур.)' },
-            { key: 'orbital', name: 'Духи Луны', icon: '🌕', rarity: 'weapon',
+            { key: 'orbital', name: 'Духи Луны', icon: '🌕',
               newDesc: 'Вращающиеся лунные духи-щиты',
               upDesc: '+духи, +орбита, +урон касанием' },
-            { key: 'shield', name: 'Аура Хищника', icon: '🩸', rarity: 'weapon',
+            { key: 'shield', name: 'Аура Хищника', icon: '🩸',
               newDesc: 'Аура, жгущая врагов рядом',
               upDesc: '+радиус, +урон, отталкивание с 3 ур.' },
-            { key: 'lightning', name: 'Лунный разряд', icon: '⚡', rarity: 'weapon',
+            { key: 'lightning', name: 'Лунный разряд', icon: '⚡',
               newDesc: 'Цепная молния по группе целей',
               upDesc: '+отскоки и урон (двойной разряд на 5 ур.)' },
-            { key: 'rockets', name: 'Призыв Стаи', icon: '👻', rarity: 'weapon',
+            { key: 'rockets', name: 'Призыв Стаи', icon: '👻',
               newDesc: 'Призрачные волки с укусом по площади',
               upDesc: '+волки и радиус укуса' },
-            { key: 'mines', name: 'Кровавые руны', icon: '🔮', rarity: 'weapon',
+            { key: 'mines', name: 'Кровавые руны', icon: '🔮',
               newDesc: 'Руны-ловушки под ногами охотников',
               upDesc: '+руны и радиус детонации' }
         ];
 
         weaponDefs.forEach(w => {
+            const id = 'weapon_' + w.key;
+            if (exclude.has(id)) return;
             const curLvl = this.weaponSystem.getWeaponLevel(w.key);
             if (curLvl < 5) {
                 const nextLvl = curLvl + 1;
                 const isNew = curLvl === 0;
-                pool.push({
-                    id: 'weapon_' + w.key,
-                    name: isNew ? `${w.name}` : `${w.name}`,
+                pool.push(this.enrichOption({
+                    id,
+                    name: w.name,
                     badge: isNew ? 'НОВОЕ' : `Ур. ${curLvl}→${nextLvl}`,
                     icon: w.icon,
                     description: isNew ? w.newDesc : w.upDesc,
                     type: 'weapon',
                     key: w.key,
                     rarity: isNew ? 'new' : 'upgrade'
-                });
+                }));
             }
         });
 
@@ -113,19 +246,41 @@ export class UpgradeSystem {
             }
         ];
 
-        passives.forEach(p => pool.push(p));
+        passives.forEach(p => {
+            if (exclude.has(p.id)) return;
+            const stacks = this.passiveStacks.get(p.id) || 0;
+            pool.push(this.enrichOption({
+                ...p,
+                badge: stacks > 0 ? `×${stacks + 1}` : null
+            }));
+        });
+
         return pool;
     }
 
-    getRandomOptions(count = 3) {
-        const available = this.getAvailableOptions();
-        // Weight: slightly prefer weapons if player has few, passives if many weapons
+    /**
+     * @param {number} count
+     * @param {string[]} [excludeIds] — do not offer these (current hand / banned extra)
+     * @param {string[]} [avoidIds] — prefer not to repeat on reroll (soft exclude until pool empty)
+     */
+    getRandomOptions(count = 3, excludeIds = [], avoidIds = []) {
+        const hardExclude = new Set(excludeIds);
+        let available = this.getAvailableOptions([...hardExclude]);
+
+        // Soft-avoid: try to not re-show the same cards on reroll
+        if (avoidIds.length > 0) {
+            const filtered = available.filter(o => !avoidIds.includes(o.id));
+            if (filtered.length >= count) available = filtered;
+        }
+
         const weaponCount = Object.values(this.weaponSystem.weapons).filter(w => w.level > 0).length;
         const weighted = available.map(opt => {
             let w = 1;
             if (opt.type === 'weapon' && opt.rarity === 'new' && weaponCount < 3) w = 1.6;
             if (opt.type === 'weapon' && weaponCount >= 5) w = 0.7;
             if (opt.type === 'passive' && weaponCount >= 4) w = 1.3;
+            // Boost cards that have active synergies
+            if (opt.synergies && opt.synergies.length > 0) w *= 1.25;
             return { opt, w };
         });
 
@@ -146,11 +301,17 @@ export class UpgradeSystem {
         return picked;
     }
 
+    banOption(optionId) {
+        if (optionId) this.bannedIds.add(optionId);
+    }
+
     applyUpgrade(option) {
         if (option.type === 'weapon') {
             this.weaponSystem.upgradeWeapon(option.key);
         } else if (option.type === 'passive' && option.apply) {
             option.apply(this.player);
+            const n = this.passiveStacks.get(option.id) || 0;
+            this.passiveStacks.set(option.id, n + 1);
         }
     }
 }

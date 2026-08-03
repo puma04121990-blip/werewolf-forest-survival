@@ -44,6 +44,11 @@ export const BALANCE = {
     xpOrbComboMoonValue: 35,    // base moon orb XP (+combo scale)
     xpOrbShowPickupText: true,
 
+    // Level-up panel
+    levelUpRerolls: 2,          // rerolls per level-up screen
+    levelUpBans: 1,             // ban one card per level-up screen
+    levelUpCardCount: 3,
+
     // Spawner
     spawnIntervalStart: 2000,
     spawnIntervalMin: 700,

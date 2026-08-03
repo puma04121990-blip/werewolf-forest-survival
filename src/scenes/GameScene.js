@@ -43,6 +43,7 @@ export default class GameScene extends Phaser.Scene {
         this.weaponSystem = new WeaponSystem(this, this.player);
         this.spawner = new Spawner(this, this.player);
         this.upgradeSystem = new UpgradeSystem(this, this.player, this.weaponSystem);
+        this.upgradeSystem.resetRunState();
         this.hud = new Hud(this);
         this.levelUpPanel = new LevelUpPanel(this);
 
@@ -433,23 +434,64 @@ export default class GameScene extends Phaser.Scene {
                 this.player.heal(8);
             }
 
-            const options = this.upgradeSystem.getRandomOptions(3);
-            this.levelUpPanel.show(options, (selectedOpt) => {
-                this.upgradeSystem.applyUpgrade(selectedOpt);
-                this.physics.resume();
-                this.isLevelingUp = false;
-
-                if (this.currentXp >= this.xpToNextLevel) {
-                    this.currentXp -= this.xpToNextLevel;
-                    this.level += 1;
-                    this.xpToNextLevel = Math.floor(this.xpToNextLevel * BALANCE.xpGrowth);
-                    this.triggerLevelUp();
-                }
-            });
+            this.openLevelUpPanel();
         };
 
         // Let orbs fly in for a short beat, then force-collect
         this.time.delayedCall(420, finishVacuumAndShow);
+    }
+
+    openLevelUpPanel() {
+        const cardCount = BALANCE.levelUpCardCount || 3;
+        let currentOptions = this.upgradeSystem.getRandomOptions(cardCount);
+
+        const finishSelect = (selectedOpt) => {
+            this.upgradeSystem.applyUpgrade(selectedOpt);
+            this.physics.resume();
+            this.isLevelingUp = false;
+
+            if (this.currentXp >= this.xpToNextLevel) {
+                this.currentXp -= this.xpToNextLevel;
+                this.level += 1;
+                this.xpToNextLevel = Math.floor(this.xpToNextLevel * BALANCE.xpGrowth);
+                this.triggerLevelUp();
+            }
+        };
+
+        this.levelUpPanel.show(currentOptions, {
+            rerollsLeft: BALANCE.levelUpRerolls ?? 2,
+            bansLeft: BALANCE.levelUpBans ?? 1,
+
+            onSelect: finishSelect,
+
+            /** Reroll: avoid current hand if possible */
+            onReroll: (shown) => {
+                const avoid = (shown || []).map(o => o.id);
+                currentOptions = this.upgradeSystem.getRandomOptions(cardCount, [], avoid);
+                return currentOptions;
+            },
+
+            /**
+             * Ban one card for the rest of the run, then refill that slot
+             * (and keep the other two if still valid).
+             */
+            onBan: (bannedOpt, shown) => {
+                this.upgradeSystem.banOption(bannedOpt.id);
+                this.hud.showToast(`🚫 БАН: ${bannedOpt.name}`, '#ff6688');
+
+                const keep = (shown || []).filter(o => o.id !== bannedOpt.id);
+                const need = Math.max(0, cardCount - keep.length);
+                const exclude = [
+                    bannedOpt.id,
+                    ...keep.map(o => o.id)
+                ];
+                const refill = this.upgradeSystem.getRandomOptions(need, exclude, []);
+                currentOptions = [...keep, ...refill];
+                // Re-enrich synergies for kept cards (loadout unchanged, but OK)
+                currentOptions = currentOptions.map(o => this.upgradeSystem.enrichOption(o));
+                return currentOptions;
+            }
+        });
     }
 
     onEnemyKilled(enemy) {

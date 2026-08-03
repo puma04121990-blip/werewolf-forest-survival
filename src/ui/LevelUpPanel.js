@@ -8,18 +8,49 @@ const RARITY_STYLE = {
     passive: { stroke: 0xffcc44, fill: 0x2a220f, label: '#ffdd66' }
 };
 
+/**
+ * Level-up UI with select / ban modes, reroll & ban buttons, synergy lines.
+ *
+ * show(options, {
+ *   onSelect(opt),
+ *   onReroll() => newOptions | null,
+ *   onBan(opt) => newOptions | null,  // after ban, refresh remaining cards
+ *   rerollsLeft, bansLeft
+ * })
+ */
 export class LevelUpPanel {
     constructor(scene) {
         this.scene = scene;
         this.container = null;
+        this.cardsLayer = null;
+        this.actionsLayer = null;
+        this.mode = 'select'; // 'select' | 'ban'
+        this.handlers = null;
+        this.rerollsLeft = 0;
+        this.bansLeft = 0;
+        this.options = [];
+        this.hintText = null;
+        this.modeBanner = null;
+        this.rerollBtn = null;
+        this.banBtn = null;
+        this.rerollLabel = null;
+        this.banLabel = null;
     }
 
-    show(options, onSelectCallback) {
+    show(options, handlers = {}) {
         soundManager.playLevelUp();
+
+        this.handlers = handlers;
+        this.rerollsLeft = handlers.rerollsLeft ?? 0;
+        this.bansLeft = handlers.bansLeft ?? 0;
+        this.mode = 'select';
+        this.options = options;
 
         const width = this.scene.scale.width;
         const height = this.scene.scale.height;
         const isPortrait = isPortraitMode();
+
+        if (this.container) this.hide();
 
         this.container = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(1000);
 
@@ -27,9 +58,9 @@ export class LevelUpPanel {
         bg.setInteractive();
         this.container.add(bg);
 
-        const titleY = isPortrait ? 56 : 88;
+        const titleY = isPortrait ? 48 : 72;
         const title = this.scene.add.text(width / 2, titleY, 'НОВЫЙ УРОВЕНЬ!', {
-            fontSize: isPortrait ? '30px' : '40px',
+            fontSize: isPortrait ? '28px' : '38px',
             fill: '#ffe600',
             fontStyle: 'bold',
             stroke: '#221100',
@@ -37,141 +68,344 @@ export class LevelUpPanel {
         }).setOrigin(0.5);
         this.container.add(title);
 
-        const hint = this.scene.add.text(width / 2, titleY + (isPortrait ? 32 : 40), 'Выбери усиление', {
-            fontSize: '15px',
+        this.hintText = this.scene.add.text(width / 2, titleY + (isPortrait ? 28 : 36), 'Выбери усиление', {
+            fontSize: '14px',
             fill: '#aabbaa'
         }).setOrigin(0.5);
-        this.container.add(hint);
+        this.container.add(this.hintText);
+
+        this.modeBanner = this.scene.add.text(width / 2, titleY + (isPortrait ? 50 : 58), '', {
+            fontSize: '15px',
+            fill: '#ff6688',
+            fontStyle: 'bold'
+        }).setOrigin(0.5).setVisible(false);
+        this.container.add(this.modeBanner);
+
+        this.cardsLayer = this.scene.add.container(0, 0);
+        this.container.add(this.cardsLayer);
+
+        this.actionsLayer = this.scene.add.container(0, 0);
+        this.container.add(this.actionsLayer);
+
+        this.renderCards(options);
+        this.renderActionButtons();
+    }
+
+    renderCards(options) {
+        this.options = options;
+        this.cardsLayer.removeAll(true);
+
+        const width = this.scene.scale.width;
+        const height = this.scene.scale.height;
+        const isPortrait = isPortraitMode();
+        const titleY = isPortrait ? 48 : 72;
 
         if (isPortrait) {
-            this.layoutPortrait(options, width, height, titleY, onSelectCallback);
+            const cardW = Math.min(520, width * 0.82);
+            const cardH = 128;
+            const totalH = options.length * (cardH + 12);
+            let startY = (height - totalH) / 2 + cardH / 2 + 8;
+            if (startY < titleY + 90) startY = titleY + 96;
+
+            options.forEach((opt, idx) => {
+                this.buildCard(opt, width / 2, startY + idx * (cardH + 12), cardW, cardH, true);
+            });
         } else {
-            this.layoutLandscape(options, width, height, onSelectCallback);
+            const cardWidth = 250;
+            const cardHeight = 340;
+            const gap = 280;
+            const startX = width / 2 - ((options.length - 1) * gap) / 2;
+
+            options.forEach((opt, idx) => {
+                this.buildCard(opt, startX + idx * gap, height / 2 + 20, cardWidth, cardHeight, false);
+            });
         }
     }
 
-    layoutPortrait(options, width, height, titleY, onSelectCallback) {
-        const cardW = Math.min(520, width * 0.82);
-        const cardH = 118;
-        const totalH = options.length * (cardH + 14);
-        let startY = (height - totalH) / 2 + cardH / 2 + 16;
-        if (startY < titleY + 70) startY = titleY + 76;
-
-        options.forEach((opt, idx) => {
-            const cardX = width / 2;
-            const cardY = startY + idx * (cardH + 14);
-            this.buildCard(opt, cardX, cardY, cardW, cardH, true, onSelectCallback);
-        });
-    }
-
-    layoutLandscape(options, width, height, onSelectCallback) {
-        const cardWidth = 250;
-        const cardHeight = 320;
-        const gap = 280;
-        const startX = width / 2 - ((options.length - 1) * gap) / 2;
-
-        options.forEach((opt, idx) => {
-            const cardX = startX + idx * gap;
-            const cardY = height / 2 + 36;
-            this.buildCard(opt, cardX, cardY, cardWidth, cardHeight, false, onSelectCallback);
-        });
-    }
-
-    buildCard(opt, cardX, cardY, cardW, cardH, horizontal, onSelectCallback) {
+    buildCard(opt, cardX, cardY, cardW, cardH, horizontal) {
         const rarity = opt.rarity || (opt.type === 'passive' ? 'passive' : 'weapon');
         const style = RARITY_STYLE[rarity] || RARITY_STYLE.weapon;
+        const hasSynergy = !!(opt.synergyText);
 
         const cardBg = this.scene.add.rectangle(cardX, cardY, cardW, cardH, style.fill, 0.96);
-        cardBg.setStrokeStyle(3, style.stroke);
+        cardBg.setStrokeStyle(hasSynergy ? 3 : 3, hasSynergy ? 0xffcc66 : style.stroke);
         cardBg.setInteractive({ useHandCursor: true });
 
-        let icon, name, desc, badge;
+        const nodes = [cardBg];
+        let icon, name, desc, badge, synergy, banMark;
 
         if (horizontal) {
-            icon = this.scene.add.text(cardX - cardW / 2 + 40, cardY, opt.icon || '⚡', {
-                fontSize: '38px'
+            icon = this.scene.add.text(cardX - cardW / 2 + 40, cardY - 8, opt.icon || '⚡', {
+                fontSize: '36px'
             }).setOrigin(0.5);
+            nodes.push(icon);
 
             if (opt.badge) {
-                badge = this.scene.add.text(cardX + cardW / 2 - 14, cardY - cardH / 2 + 16, opt.badge, {
-                    fontSize: '12px',
+                badge = this.scene.add.text(cardX + cardW / 2 - 12, cardY - cardH / 2 + 14, opt.badge, {
+                    fontSize: '11px',
                     fill: style.label,
                     fontStyle: 'bold',
                     backgroundColor: '#00000088',
-                    padding: { x: 6, y: 3 }
+                    padding: { x: 5, y: 2 }
                 }).setOrigin(1, 0.5);
+                nodes.push(badge);
             }
 
-            name = this.scene.add.text(cardX - cardW / 2 + 76, cardY - 22, opt.name, {
-                fontSize: '17px',
+            name = this.scene.add.text(cardX - cardW / 2 + 74, cardY - 32, opt.name, {
+                fontSize: '16px',
                 fill: '#ffffff',
                 fontStyle: 'bold',
-                wordWrap: { width: cardW - 120 }
+                wordWrap: { width: cardW - 110 }
             }).setOrigin(0, 0.5);
+            nodes.push(name);
 
-            desc = this.scene.add.text(cardX - cardW / 2 + 76, cardY + 18, opt.description, {
-                fontSize: '13px',
+            desc = this.scene.add.text(cardX - cardW / 2 + 74, cardY - 2, opt.description, {
+                fontSize: '12px',
                 fill: style.label,
-                wordWrap: { width: cardW - 120 }
+                wordWrap: { width: cardW - 110 }
             }).setOrigin(0, 0.5);
+            nodes.push(desc);
+
+            if (opt.synergyText) {
+                synergy = this.scene.add.text(cardX - cardW / 2 + 74, cardY + 36, opt.synergyText, {
+                    fontSize: '12px',
+                    fill: '#ffdd77',
+                    fontStyle: 'bold',
+                    wordWrap: { width: cardW - 110 }
+                }).setOrigin(0, 0.5);
+                nodes.push(synergy);
+            }
         } else {
-            icon = this.scene.add.text(cardX, cardY - 95, opt.icon || '⚡', { fontSize: '52px' }).setOrigin(0.5);
+            icon = this.scene.add.text(cardX, cardY - 105, opt.icon || '⚡', { fontSize: '48px' }).setOrigin(0.5);
+            nodes.push(icon);
 
             if (opt.badge) {
-                badge = this.scene.add.text(cardX, cardY - 48, opt.badge, {
-                    fontSize: '13px',
+                badge = this.scene.add.text(cardX, cardY - 58, opt.badge, {
+                    fontSize: '12px',
                     fill: style.label,
                     fontStyle: 'bold',
                     backgroundColor: '#000000aa',
-                    padding: { x: 8, y: 4 }
+                    padding: { x: 7, y: 3 }
                 }).setOrigin(0.5);
+                nodes.push(badge);
             }
 
-            name = this.scene.add.text(cardX, cardY - 10, opt.name, {
-                fontSize: '17px',
+            name = this.scene.add.text(cardX, cardY - 22, opt.name, {
+                fontSize: '16px',
                 fill: '#ffffff',
                 fontStyle: 'bold',
                 align: 'center',
                 wordWrap: { width: cardW - 28 }
             }).setOrigin(0.5);
+            nodes.push(name);
 
-            desc = this.scene.add.text(cardX, cardY + 60, opt.description, {
-                fontSize: '14px',
+            desc = this.scene.add.text(cardX, cardY + 40, opt.description, {
+                fontSize: '13px',
                 fill: style.label,
                 align: 'center',
                 wordWrap: { width: cardW - 32 }
             }).setOrigin(0.5);
+            nodes.push(desc);
+
+            if (opt.synergyText) {
+                synergy = this.scene.add.text(cardX, cardY + 100, opt.synergyText, {
+                    fontSize: '12px',
+                    fill: '#ffdd77',
+                    fontStyle: 'bold',
+                    align: 'center',
+                    wordWrap: { width: cardW - 28 }
+                }).setOrigin(0.5);
+                nodes.push(synergy);
+
+                if (opt.synergyDetail && opt.synergyDetail !== opt.synergyText) {
+                    const detail = this.scene.add.text(cardX, cardY + 122, opt.synergyDetail, {
+                        fontSize: '11px',
+                        fill: '#ccaa66',
+                        align: 'center',
+                        wordWrap: { width: cardW - 28 }
+                    }).setOrigin(0.5);
+                    nodes.push(detail);
+                }
+            }
         }
 
-        cardBg.on('pointerover', () => {
-            cardBg.setStrokeStyle(4, 0xffe600);
-            cardBg.setScale(1.03);
-        });
-        cardBg.on('pointerout', () => {
-            cardBg.setStrokeStyle(3, style.stroke);
+        banMark = this.scene.add.text(cardX, cardY, '🚫', {
+            fontSize: '42px'
+        }).setOrigin(0.5).setAlpha(0).setDepth(5);
+        nodes.push(banMark);
+
+        const applyHover = () => {
+            if (this.mode === 'ban') {
+                cardBg.setStrokeStyle(4, 0xff3355);
+                cardBg.setFillStyle(0x3a1018, 1);
+                banMark.setAlpha(0.85);
+            } else {
+                cardBg.setStrokeStyle(4, 0xffe600);
+                cardBg.setScale(1.03);
+            }
+        };
+        const clearHover = () => {
+            banMark.setAlpha(0);
             cardBg.setScale(1);
-        });
+            if (this.mode === 'ban') {
+                cardBg.setStrokeStyle(3, 0xff6688);
+                cardBg.setFillStyle(style.fill, 0.96);
+            } else {
+                cardBg.setStrokeStyle(3, hasSynergy ? 0xffcc66 : style.stroke);
+                cardBg.setFillStyle(style.fill, 0.96);
+            }
+        };
+
+        cardBg.on('pointerover', applyHover);
+        cardBg.on('pointerout', clearHover);
         cardBg.on('pointerdown', () => {
             soundManager.playButtonClick && soundManager.playButtonClick();
-            this.hide();
-            onSelectCallback(opt);
+            if (this.mode === 'ban') {
+                this.handleBanClick(opt);
+            } else if (this.handlers.onSelect) {
+                this.hide();
+                this.handlers.onSelect(opt);
+            }
         });
 
-        const items = [cardBg, icon, name, desc];
-        if (badge) items.push(badge);
-        this.container.add(items);
+        // Store refs for ban mode restyle
+        cardBg.setData('style', style);
+        cardBg.setData('hasSynergy', hasSynergy);
 
-        // Pop-in
-        cardBg.setScale(0.85);
+        this.cardsLayer.add(nodes);
+
+        cardBg.setScale(0.88);
         cardBg.setAlpha(0);
         this.scene.tweens.add({
-            targets: [cardBg, icon, name, desc, badge].filter(Boolean),
+            targets: nodes,
             alpha: 1,
             scale: 1,
-            duration: 180,
-            delay: Math.random() * 60,
+            duration: 160,
+            delay: Math.random() * 50,
             ease: 'Back.easeOut'
         });
+    }
+
+    renderActionButtons() {
+        this.actionsLayer.removeAll(true);
+
+        const width = this.scene.scale.width;
+        const height = this.scene.scale.height;
+        const isPortrait = isPortraitMode();
+        const y = isPortrait ? height - 52 : height - 48;
+        const gap = isPortrait ? 150 : 180;
+
+        // Reroll
+        const rerollEnabled = this.rerollsLeft > 0 && this.mode === 'select';
+        this.rerollBtn = this.makeActionButton(
+            width / 2 - gap / 2,
+            y,
+            isPortrait ? 140 : 160,
+            `🎲 РЕРОЛЛ (${this.rerollsLeft})`,
+            rerollEnabled ? 0x66aaff : 0x445566,
+            rerollEnabled,
+            () => this.handleReroll()
+        );
+
+        // Ban
+        const banActive = this.mode === 'ban';
+        const banEnabled = this.bansLeft > 0 || banActive;
+        const banLabel = banActive
+            ? '✖ ОТМЕНА БАНА'
+            : `🚫 БАН (${this.bansLeft})`;
+        this.banBtn = this.makeActionButton(
+            width / 2 + gap / 2,
+            y,
+            isPortrait ? 140 : 160,
+            banLabel,
+            banActive ? 0xff6688 : (this.bansLeft > 0 ? 0xcc5566 : 0x445566),
+            banEnabled,
+            () => this.toggleBanMode()
+        );
+    }
+
+    makeActionButton(x, y, w, label, color, enabled, onClick) {
+        const h = 42;
+        const bg = this.scene.add.rectangle(x, y, w, h, color, enabled ? 0.28 : 0.12);
+        bg.setStrokeStyle(2, color, enabled ? 1 : 0.4);
+        if (enabled) bg.setInteractive({ useHandCursor: true });
+
+        const txt = this.scene.add.text(x, y, label, {
+            fontSize: '13px',
+            fill: enabled ? '#ffffff' : '#778888',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        if (enabled) {
+            bg.on('pointerover', () => bg.setFillStyle(color, 0.5));
+            bg.on('pointerout', () => bg.setFillStyle(color, 0.28));
+            bg.on('pointerdown', onClick);
+        }
+
+        this.actionsLayer.add([bg, txt]);
+        return { bg, txt };
+    }
+
+    handleReroll() {
+        if (this.rerollsLeft <= 0 || this.mode !== 'select') return;
+        if (!this.handlers.onReroll) return;
+
+        soundManager.playButtonClick && soundManager.playButtonClick();
+        const next = this.handlers.onReroll(this.options);
+        if (!next || next.length === 0) return;
+
+        this.rerollsLeft = Math.max(0, this.rerollsLeft - 1);
+        if (this.handlers.onRerollUsed) this.handlers.onRerollUsed(this.rerollsLeft);
+
+        this.renderCards(next);
+        this.renderActionButtons();
+        this.hintText.setText(`Реролл · осталось ${this.rerollsLeft}`);
+    }
+
+    toggleBanMode() {
+        if (this.mode === 'ban') {
+            this.mode = 'select';
+            this.modeBanner.setVisible(false);
+            this.hintText.setText('Выбери усиление');
+            this.renderCards(this.options);
+            this.renderActionButtons();
+            return;
+        }
+
+        if (this.bansLeft <= 0) return;
+
+        this.mode = 'ban';
+        this.modeBanner.setText('Выбери карту для БАНА (навсегда в этом забеге)');
+        this.modeBanner.setVisible(true);
+        this.hintText.setText('Режим бана');
+        this.renderCards(this.options);
+        this.renderActionButtons();
+
+        // Restyle cards slightly for ban mode
+        this.cardsLayer.iterate((child) => {
+            if (child.type === 'Rectangle' && child.input) {
+                child.setStrokeStyle(3, 0xff6688);
+            }
+        });
+    }
+
+    handleBanClick(opt) {
+        if (this.bansLeft <= 0 || !this.handlers.onBan) return;
+
+        const next = this.handlers.onBan(opt, this.options);
+        this.bansLeft = Math.max(0, this.bansLeft - 1);
+        if (this.handlers.onBanUsed) this.handlers.onBanUsed(this.bansLeft);
+
+        this.mode = 'select';
+        this.modeBanner.setVisible(false);
+        this.hintText.setText(next && next.length ? 'Карта забанена · выбери усиление' : 'Выбери усиление');
+
+        if (next && next.length > 0) {
+            this.renderCards(next);
+        } else {
+            this.renderCards(this.options.filter(o => o.id !== opt.id));
+        }
+        this.renderActionButtons();
     }
 
     hide() {
@@ -179,5 +413,9 @@ export class LevelUpPanel {
             this.container.destroy();
             this.container = null;
         }
+        this.cardsLayer = null;
+        this.actionsLayer = null;
+        this.handlers = null;
+        this.mode = 'select';
     }
 }
