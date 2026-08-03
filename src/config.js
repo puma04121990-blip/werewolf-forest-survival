@@ -62,6 +62,13 @@ export const BALANCE = {
     enemyDmgPerLevel: 0.09,
     enemySpeedPerLevel: 0.03,
 
+    // Enemy projectiles (arrows / boss rings)
+    // Final speed = base * (startMul + (wave-1) * perWave), clamped
+    enemyBulletSpeedStartMul: 0.78,   // slower early game
+    enemyBulletSpeedPerWave: 0.055,   // +5.5% per difficulty level
+    enemyBulletSpeedMulCap: 1.55,
+    enemyBulletDefaultBase: 240,
+
     // Pickups
     healthDropChance: 0.09,
     healthDropBoss: 0.55,

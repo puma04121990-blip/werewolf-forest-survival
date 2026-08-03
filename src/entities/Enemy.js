@@ -105,14 +105,15 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             const shootCd = Math.max(1400, 2300 - this.difficultyLevel * 80);
             if (time - this.lastShootTime > shootCd) {
                 this.lastShootTime = time;
-                this.scene.fireEnemyBullet(this.x, this.y, angle, 260 + this.difficultyLevel * 5, 5 + this.difficultyLevel * 0.4);
+                // Base speed only — wave scaling applied in fireEnemyBullet
+                this.scene.fireEnemyBullet(this.x, this.y, angle, 250, 5 + this.difficultyLevel * 0.4);
             }
         } else if (this.type === 'elite') {
             this.setVelocity(Math.cos(angle) * this.speed, Math.sin(angle) * this.speed);
             if (time - this.lastShootTime > 2800) {
                 this.lastShootTime = time;
                 for (let i = -1; i <= 1; i++) {
-                    this.scene.fireEnemyBullet(this.x, this.y, angle + i * 0.2, 280, 7);
+                    this.scene.fireEnemyBullet(this.x, this.y, angle + i * 0.2, 270, 7);
                 }
             }
         } else if (this.type === 'boss') {
@@ -150,9 +151,11 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
 
     bossRingAttack(bulletCount = 10, angleOffset = 0) {
+        // Phase still bumps base speed a bit; wave mul stacks on top
+        const base = 210 + this.phase * 18;
         for (let i = 0; i < bulletCount; i++) {
             const a = (i * Math.PI * 2) / bulletCount + angleOffset;
-            this.scene.fireEnemyBullet(this.x, this.y, a, 220 + this.phase * 20, 6 + this.phase);
+            this.scene.fireEnemyBullet(this.x, this.y, a, base, 6 + this.phase);
         }
     }
 
@@ -160,7 +163,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         const count = 16;
         for (let i = 0; i < count; i++) {
             const a = (i * Math.PI * 2) / count + this.scene.gameTime * 0.002;
-            this.scene.fireEnemyBullet(this.x, this.y, a, 200 + (i % 4) * 25, 7);
+            this.scene.fireEnemyBullet(this.x, this.y, a, 195 + (i % 4) * 22, 7);
         }
     }
 

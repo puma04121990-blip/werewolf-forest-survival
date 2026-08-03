@@ -157,10 +157,26 @@ export default class GameScene extends Phaser.Scene {
         }
     }
 
-    fireEnemyBullet(x, y, angle, speed = 250, damage = 6) {
+    /**
+     * Enemy projectiles scale with wave difficulty:
+     * early = slower (readable), late = faster (pressure).
+     * @param {number} [baseSpeed] unscaled design speed (default from BALANCE)
+     */
+    getEnemyBulletSpeed(baseSpeed) {
+        const base = baseSpeed != null ? baseSpeed : BALANCE.enemyBulletDefaultBase;
+        const wave = this.spawner ? this.spawner.difficultyLevel : 1;
+        const mul = Math.min(
+            BALANCE.enemyBulletSpeedMulCap,
+            BALANCE.enemyBulletSpeedStartMul + (wave - 1) * BALANCE.enemyBulletSpeedPerWave
+        );
+        return base * mul;
+    }
+
+    fireEnemyBullet(x, y, angle, speed = null, damage = 6) {
         const bullet = this.enemyBullets.get();
         if (bullet) {
-            bullet.fire(x, y, angle, speed, damage, true, 'enemy_bullet');
+            const finalSpeed = this.getEnemyBulletSpeed(speed);
+            bullet.fire(x, y, angle, finalSpeed, damage, true, 'enemy_bullet');
         }
     }
 
