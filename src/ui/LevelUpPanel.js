@@ -350,9 +350,13 @@ export class LevelUpPanel {
             soundManager.playButtonClick && soundManager.playButtonClick();
             if (this.mode === 'ban') {
                 this.handleBanClick(opt);
-            } else if (this.handlers.onSelect) {
+                return;
+            }
+            // Capture callback BEFORE hide() — hide() nulls this.handlers
+            const onSelect = this.handlers && this.handlers.onSelect;
+            if (onSelect) {
                 this.hide();
-                this.handlers.onSelect(opt);
+                onSelect(opt);
             }
         });
 
@@ -436,7 +440,7 @@ export class LevelUpPanel {
 
     handleReroll() {
         if (this.rerollsLeft <= 0 || this.mode !== 'select') return;
-        if (!this.handlers.onReroll) return;
+        if (!this.handlers || !this.handlers.onReroll) return;
 
         soundManager.playButtonClick && soundManager.playButtonClick();
         const next = this.handlers.onReroll(this.options);
@@ -447,7 +451,7 @@ export class LevelUpPanel {
 
         this.renderCards(next);
         this.renderActionButtons();
-        this.hintText.setText(`Реролл · осталось ${this.rerollsLeft}`);
+        if (this.hintText) this.hintText.setText(`Реролл · осталось ${this.rerollsLeft}`);
     }
 
     toggleBanMode() {
@@ -478,7 +482,7 @@ export class LevelUpPanel {
     }
 
     handleBanClick(opt) {
-        if (this.bansLeft <= 0 || !this.handlers.onBan) return;
+        if (this.bansLeft <= 0 || !this.handlers || !this.handlers.onBan) return;
 
         const next = this.handlers.onBan(opt, this.options);
         this.bansLeft = Math.max(0, this.bansLeft - 1);
